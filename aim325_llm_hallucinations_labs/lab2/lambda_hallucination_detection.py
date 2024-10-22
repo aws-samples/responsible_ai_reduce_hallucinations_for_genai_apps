@@ -17,7 +17,7 @@ import shlex
 
 
 #subprocess.Popen(shlex.split('mkdir aim325packages'), stdout=subprocess.PIPE)
-p = subprocess.Popen(shlex.split('pip install ragas pydantic datasets -q -t /tmp/ --no-cache-dir'), stdout=subprocess.PIPE) # nosemgrep
+p = subprocess.Popen(shlex.split('pip install ragas==0.1.9 pydantic datasets -q -t /tmp/ --no-cache-dir'), stdout=subprocess.PIPE) # nosemgrep
 out, err = p.communicate()
 print(f"out :: {out}")
 print(f"err :: {err}")

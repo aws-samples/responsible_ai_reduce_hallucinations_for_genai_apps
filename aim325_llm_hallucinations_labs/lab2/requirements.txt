@@ -9,3 +9,4 @@ langchain-text-splitters==0.2.4
 opensearch-py==2.7.1
 requests-aws4auth==1.2.3
 ragas==0.1.9
+unstructured==0.15.9
