@@ -2,7 +2,7 @@ awscli==1.34.15
 boto3==1.35.15
 botocore==1.35.15
 ipywidgets==8.1.2
-langchain==0.2.10
+langchain==0.3.0
 langchain-community==0.2.10
 langchain-core==0.2.38
 langchain-text-splitters==0.2.4
