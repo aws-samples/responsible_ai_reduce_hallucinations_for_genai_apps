@@ -11,6 +11,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.chat_models import BedrockChat
 from langchain_core.messages import HumanMessage
+import boto3
 
 logging.basicConfig(format='[%(asctime)s] p%(process)s {%(filename)s:%(lineno)d} %(levelname)s - %(message)s', level=logging.ERROR)
 logger = logging.getLogger(__name__)
