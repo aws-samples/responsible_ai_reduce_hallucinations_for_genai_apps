@@ -13,6 +13,12 @@ from requests_aws4auth import AWS4Auth
 from botocore.exceptions import ClientError
 from IPython.display import display, HTML
 
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_community.chat_models import BedrockChat
+from langchain_core.messages import HumanMessage
+import boto3
+
 ### NOTE: change the logging level to DEBUG if infrasetup fails to get more trace on the issue
 logging.basicConfig(format='[%(asctime)s] p%(process)s {%(filename)s:%(lineno)d} %(levelname)s - %(message)s', level=logging.ERROR)
 logger = logging.getLogger(__name__)
@@ -31,6 +37,33 @@ region = session.region_name
 account_id = sts_client.get_caller_identity()["Account"]
 region, account_id
 # getting boto3 clients for required AWS services
+
+
+embedding_model_id="amazon.titan-embed-text-v2:0"
+llm_model_id="anthropic.claude-3-sonnet-20240229-v1:0"
+
+bedrock_runtime_client = boto3.client("bedrock-runtime")
+
+model_kwargs =  {
+    "max_tokens": 4000,
+    "temperature": 0.0,
+    "top_k": 250,
+    "top_p": 1,
+    "stop_sequences": ["\n\nHuman"],
+}
+
+
+
+def test_llm_call(input_prompt):
+    llm = BedrockChat(client=bedrock_runtime_client, model_id=llm_model_id, model_kwargs=model_kwargs)
+    messages = [HumanMessage(content=f"{input_prompt}")]
+    response = llm(messages)
+
+    if str(type(response)) == "<class 'langchain_core.messages.ai.AIMessage'>":
+            response = response.content
+            response = response.strip()
+
+    return response
 
 from botocore.config import Config 
 

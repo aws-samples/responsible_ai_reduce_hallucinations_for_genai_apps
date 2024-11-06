@@ -72,6 +72,7 @@ Resources:
               - 'bedrock:UpdateAgentActionGroup'
               - 'bedrock:UpdateAgentAlias'
               - 'bedrock:UpdateGuardrail'
+              - 'bedrock:RetrieveAndGenerate'
               - 'iam:GetPolicy'
               - 'iam:GetRole'
               - 'iam:ListPolicies'
