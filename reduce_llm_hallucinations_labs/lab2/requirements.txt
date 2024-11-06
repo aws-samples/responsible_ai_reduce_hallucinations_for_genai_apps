@@ -3,7 +3,7 @@ boto3==1.35.15
 botocore==1.35.15
 ipywidgets==8.1.2
 langchain==0.3.0
-langchain-community==0.2.10
+langchain-community==0.3.0
 langchain-core==0.2.38
 langchain-text-splitters==0.2.4
 opensearch-py==2.7.1
