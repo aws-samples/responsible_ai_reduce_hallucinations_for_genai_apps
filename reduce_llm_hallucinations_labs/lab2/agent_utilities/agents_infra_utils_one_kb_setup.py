@@ -114,13 +114,13 @@ def generate_prefix_for_agent_infra():
     return prefix_infra, prefix_iam
 
 
-def setup_agent_infrastructure(schema_filename, kb_db_file_uri, lambda_code_uri, sns_topic_name, gt_file_name, use_existing_kb, existing_kb_id = 'PWG8OXAGA2'):
+def setup_agent_infrastructure(schema_filename, kb_db_file_uri, lambda_code_uri, sns_topic_name, gt_file_name, use_existing_kb, existing_kb_id):
     
     # prefix and suffix names
     prefix_infra, prefix_iam = generate_prefix_for_agent_infra()
     suffix = f"{account_id}" #{region}-
 
-    agent_name = f"{prefix_infra}-agent-kb"
+    agent_name = f"{prefix_infra}-reduce-hallucinations-in-genai-apps"
     agent_alias_name = f"{prefix_infra}-workshop-alias"
     bucket_name = f'{agent_name}-{suffix}'
     bucket_arn = f"arn:aws:s3:::{bucket_name}"
@@ -130,8 +130,8 @@ def setup_agent_infrastructure(schema_filename, kb_db_file_uri, lambda_code_uri,
     bedrock_agent_bedrock_allow_policy_name = f"{prefix_iam}-bedrock-allow-{suffix}"
     bedrock_agent_s3_allow_policy_name = f"{prefix_iam}-s3-allow-{suffix}"
     bedrock_agent_kb_allow_policy_name = f"{prefix_iam}-kb-allow-{suffix}"
-    lambda_role_name = 'AmazonBedrockLambdaExecutionRoleForAgentsAIAssistant03' #f'{agent_name}-lambda-role-{suffix}'#'AmazonBedrockLambdaExecutionRoleForAgentsAIAssistant03' 
-    agent_role_name = 'AmazonBedrockExecutionRoleForAgentsAIAssistant03' #f'AmazonBedrockExecutionRoleForAgents_{prefix_iam}'#      #'
+    lambda_role_name = 'AmazonBedrockLambdaExecutionRoleForAgentsAIAssistant05' #f'{agent_name}-lambda-role-{suffix}'#'AmazonBedrockLambdaExecutionRoleForAgentsAIAssistant03' 
+    agent_role_name = 'AmazonBedrockExecutionRoleForAgentsAIAssistant05' #f'AmazonBedrockExecutionRoleForAgents_{prefix_iam}'#      #'
     lambda_code_path = lambda_code_uri # file in repo
     lambda_name = 'LambdaAgentsHallucinationDetection' #f'{agent_name}-{suffix}'##
 

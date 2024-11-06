@@ -76,7 +76,7 @@ def setup_knowledge_base(bucket_name, kb_db_file_uri, use_existing_kb, existing_
     kb_db_data_source_name = f'{prefix_infra}-{kb_db_tag}-docs-{suffix}'
     kb_db_files_path = kb_db_file_uri # file path keep as-is
     kb_db_key = f'{kb_db_tag}_{prefix_infra}'
-    kb_db_role_name = 'AmazonBedrockExecutionRoleForAgentsAIAssistant03' #f'AmazonBedrockExecutionRoleForKnowledgeBase_{prefix_infra}_{kb_db_tag}_icakb'   #
+    kb_db_role_name = 'AmazonBedrockExecutionRoleForAgentsAIAssistant05' #f'AmazonBedrockExecutionRoleForKnowledgeBase_{prefix_infra}_{kb_db_tag}_icakb'   #
     kb_db_bedrock_allow_policy_name = "icaKbdbAgentsBedrockAllow01" #f"ica-{kb_db_tag}-{prefix_infra}-bedrock-allow-{suffix}"
     kb_db_aoss_allow_policy_name = f"ica-{kb_db_tag}-{prefix_infra}-aoss-allow-{suffix}"
     kb_db_s3_allow_policy_name = f"ica-{kb_db_tag}-{prefix_infra}-s3-allow-{suffix}"
