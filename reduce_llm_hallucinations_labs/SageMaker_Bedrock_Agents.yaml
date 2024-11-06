@@ -91,7 +91,9 @@ Resources:
               - 's3:GetObject'
               - 's3:ListBucket'
               - 's3:PutObject'
-            Resource: "arn:aws:s3:::*-agent-kb*"
+            Resource: 
+              - "arn:aws:s3:::*reduce-hallucinations-in-genai-apps*"
+              - !Sub "arn:aws:s3:::sagemaker-${AWS::Region}-${AWS::AccountId}"
           - Effect: Allow
             Action:
               - 'lambda:AddPermission'
@@ -119,10 +121,10 @@ Resources:
             Resource: 
               - "arn:aws:iam::*:role/aws-service-role/observability.aoss.amazonaws.com/AWSServiceRoleForAmazonOpenSearchServerless*"
 
-  AmazonBedrockExecutionRoleForAgentsAIAssistant03:
+  AmazonBedrockExecutionRoleForAgentsAIAssistant04:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: AmazonBedrockExecutionRoleForAgentsAIAssistant03
+      RoleName: AmazonBedrockExecutionRoleForAgentsAIAssistant04
       AssumeRolePolicyDocument:
         Statement:
         - Effect: Allow
@@ -136,10 +138,10 @@ Resources:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
         - !Ref SageMakerNotebookPolicy
 
-  AmazonBedrockLambdaExecutionRoleForAgentsAIAssistant03:
+  AmazonBedrockLambdaExecutionRoleForAgentsAIAssistant04:
     Type: 'AWS::IAM::Role'
     Properties:
-      RoleName: AmazonBedrockLambdaExecutionRoleForAgentsAIAssistant03
+      RoleName: AmazonBedrockLambdaExecutionRoleForAgentsAIAssistant04
       AssumeRolePolicyDocument:
         Statement:
           - Action: 'sts:AssumeRole'
@@ -169,8 +171,8 @@ Resources:
             Resource: '*'
         Version: 2012-10-17
       Roles:
-        - !Ref AmazonBedrockExecutionRoleForAgentsAIAssistant03
-        - !Ref AmazonBedrockLambdaExecutionRoleForAgentsAIAssistant03
+        - !Ref AmazonBedrockExecutionRoleForAgentsAIAssistant04
+        - !Ref AmazonBedrockLambdaExecutionRoleForAgentsAIAssistant04
 
   AmazonBedrockAgentBedrockFoundationModelPolicy:
     Type: 'AWS::IAM::Policy'
@@ -187,8 +189,8 @@ Resources:
               - !Sub 'arn:aws:bedrock::${AWS::AccountId}:foundation-model/anthropic.claude-v2'
         Version: 2012-10-17
       Roles:
-        - !Ref AmazonBedrockExecutionRoleForAgentsAIAssistant03
-        - !Ref AmazonBedrockLambdaExecutionRoleForAgentsAIAssistant03
+        - !Ref AmazonBedrockExecutionRoleForAgentsAIAssistant04
+        - !Ref AmazonBedrockLambdaExecutionRoleForAgentsAIAssistant04
 
   AmazonBedrockAgentBedrockApplyGuardrailPolicy:
     Type: 'AWS::IAM::Policy'
@@ -202,8 +204,8 @@ Resources:
             Resource: !Sub 'arn:aws:bedrock::${AWS::AccountId}:guardrail/*'
         Version: 2012-10-17
       Roles:
-        - !Ref AmazonBedrockExecutionRoleForAgentsAIAssistant03
-        - !Ref AmazonBedrockLambdaExecutionRoleForAgentsAIAssistant03
+        - !Ref AmazonBedrockExecutionRoleForAgentsAIAssistant04
+        - !Ref AmazonBedrockLambdaExecutionRoleForAgentsAIAssistant04
 
   AmazonBedrockAgentAOSSPolicy:
     Type: 'AWS::IAM::Policy'
@@ -218,8 +220,8 @@ Resources:
               - !Sub 'arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/*'
         Version: 2012-10-17
       Roles:
-        - !Ref AmazonBedrockExecutionRoleForAgentsAIAssistant03
-        - !Ref AmazonBedrockLambdaExecutionRoleForAgentsAIAssistant03
+        - !Ref AmazonBedrockExecutionRoleForAgentsAIAssistant04
+        - !Ref AmazonBedrockLambdaExecutionRoleForAgentsAIAssistant04
 
   SageMakerNotebookRole:
     Type: AWS::IAM::Role
