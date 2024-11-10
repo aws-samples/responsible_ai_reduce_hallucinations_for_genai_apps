@@ -1,5 +1,0 @@
-question_id,question,ground_truth_answer
-Q001,What models are supported by bedrock agents?,The following models are supported for use with Amazon Bedrock Agents: Anthropic Claude v2 Anthropic Claude v2.1 Anthropic Claude Instant Anthropic Claude 3 Sonnet Anthropic Claude 3 Haiku Anthropic Claude 3.5 Sonnet Titan Text G1 Premier
-Q002,Which models can I use with Amazon Bedrock Agents?,The following models are supported for use with Amazon Bedrock Agents: Anthropic Claude v2 Anthropic Claude v2.1 Anthropic Claude Instant Anthropic Claude 3 Sonnet Anthropic Claude 3 Haiku Anthropic Claude 3.5 Sonnet Titan Text G1 Premier
-Q003,Which are the dates for reinvent 2024?,December 2-6
-Q004,What is the Model ID of Amazon Titan Text Premier,The Model ID of Amazon Titan Text G1 - Premier is amazon.titan-text-premier-v1:0.
