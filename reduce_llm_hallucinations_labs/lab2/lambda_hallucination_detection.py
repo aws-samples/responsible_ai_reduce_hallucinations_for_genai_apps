@@ -17,10 +17,15 @@ import shlex
 
 
 #subprocess.Popen(shlex.split('mkdir aim325packages'), stdout=subprocess.PIPE)
-p = subprocess.Popen(shlex.split('pip install ragas==0.1.9 pydantic datasets -q -t /tmp/ --no-cache-dir'), stdout=subprocess.PIPE) # nosemgrep
+p = subprocess.Popen(shlex.split('pip install llama_index ragas pydantic datasets -q -t /tmp/ --no-cache-dir'), stdout=subprocess.PIPE) # nosemgrep
 out, err = p.communicate()
-print(f"out :: {out}")
-print(f"err :: {err}")
+print(f"out lib install:: {out}")
+print(f"err lib install:: {err}")
+
+p = subprocess.Popen(shlex.split('pip list | grep ragas'), stdout=subprocess.PIPE) # nosemgrep
+out, err = p.communicate()
+print(f"out lib version :: {out}")
+print(f"err lib version:: {err}")
 
 #subprocess.check_output('ls -l /aim325packages/')
 sys.path.insert(1, '/tmp/')
@@ -34,9 +39,10 @@ sys.path.insert(1, '/tmp/')
 from datasets import Dataset
 from ragas import evaluate
 from ragas.metrics import (
-    answer_similarity,
+    answer_relevancy,
     answer_correctness
 )
+
 import boto3
 import pprint
 #from botocore.client import Config
@@ -119,22 +125,34 @@ def ragas_evaluation(question, kb_response):
     }
 
     dataset = Dataset.from_dict(data_samples)
-    score = evaluate(dataset,metrics=[answer_correctness, answer_similarity],llm=llm_for_evaluation, embeddings=bedrock_embeddings,)
-    avg_score = (score['answer_correctness'] + score['answer_similarity'])/2
-    
+    score = evaluate(dataset, metrics=[answer_correctness, answer_relevancy],llm=llm_for_evaluation, embeddings=bedrock_embeddings,)
+
     print(f"score[answer_correctness] :: {score['answer_correctness']}")
-    print(f"score[answer_similarity] :: {score['answer_similarity']}")
+    print(type(score["answer_correctness"]))
+
+    print(f"score[answer_relevancy] :: {score['answer_relevancy']}")
+    print(type(score["answer_relevancy"]))
+
+    if isinstance(score['answer_correctness'], list) and isinstance(score['answer_relevancy'], list):
+        avg_score = (score['answer_correctness'][0] + score['answer_relevancy'][0])/2
+    else:
+        avg_score = (score['answer_correctness'] + score['answer_relevancy'])/2
+    
+   
     print(f"avg_score :: {avg_score}")
 
     return avg_score, ground_truth_ans
     
 
 def send_sns_notification(question, kb_response, ground_truth, hallucinationScore):
+
+    
     #add sns call to customer service queue - separate notebook to see queue
     complete_arn = f'arn:aws:sns:{region_name}:{account_number}:{topic_name}'
     complete_message_to_topic = f"Customer needs help with the following question :: {question}. The AI workflow response quality does not meet the quality threshold {kb_response}. The ground truth answer is {ground_truth}. Please join the customer chat to assist them further. Thank you."
     response = sns_client.publish(TopicArn=complete_arn, Message=complete_message_to_topic)
     print(f"Message = {complete_message_to_topic} published to topic = {topic_name}. SNS response = {response}")
+    
     return response
 
 

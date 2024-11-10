@@ -72,10 +72,13 @@ def format_final_response(question_id, question, final_answer, lab_number, turn_
             file_json = json.load(agent_trace_fp)
             #print(file_json)
             #print(type(file_json))
+            file_json["text"] = file_json["text"].replace('\"', '')
             file_json["text"] = file_json["text"].replace("\'", "\"")
             #file_json["text"] = file_json["text"].replace("\'", "\"")
             file_json["text"] = file_json["text"].replace("\"s", "s")
             file_json["text"] = file_json["text"].replace("\'s", "s")
+            file_json["text"] = file_json["text"].replace("(", "")
+            file_json["text"] = file_json["text"].replace(")", "")
             #print(file_json["text"])
 
             file_json = json.loads(file_json["text"])

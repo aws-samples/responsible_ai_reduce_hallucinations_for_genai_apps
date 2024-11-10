@@ -923,7 +923,7 @@ def cleanup_infrastructure(agent_action_group_response, lambda_name, lambda_func
     
     # This is not needed, you can delete agent successfully after deleting alias only
     # Additionaly, you need to disable it first
-    '''
+
     action_group_id = agent_action_group_response['agentActionGroup']['actionGroupId']
     action_group_name = agent_action_group_response['agentActionGroup']['actionGroupName']
 
@@ -974,9 +974,9 @@ def cleanup_infrastructure(agent_action_group_response, lambda_name, lambda_func
         for obj in objects['Contents']:
             s3_client.delete_object(Bucket=bucket_name, Key=obj['Key'])
 
-
+    time.sleep(10)
     s3_client.delete_bucket(Bucket=bucket_name)
-    '''
+
     '''
 
     # Delete IAM Roles and policies

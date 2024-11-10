@@ -9,3 +9,4 @@ langchain-text-splitters==0.3.0
 opensearch-py==2.7.1
 requests-aws4auth==1.2.3
 ragas==0.1.9
+pandas==1.5.3
