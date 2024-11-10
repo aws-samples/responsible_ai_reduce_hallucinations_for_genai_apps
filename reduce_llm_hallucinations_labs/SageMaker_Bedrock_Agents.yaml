@@ -1,0 +1,304 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: CloudFormation template to create SageMaker notebook with IAM policy and lifecycle configuration
+
+Parameters:
+  InstanceType:
+    Type: String
+    AllowedValues:
+      - ml.t3.medium
+    Description: 'The instance type used for the SageMaker Notebook'
+    Default: ml.t3.medium
+
+Resources:
+  # This policy does not follow principle of least privileges and should NEVER be used in production
+  SageMakerNotebookPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'aoss:APIAccessAll'
+              - 'aoss:BatchGetCollection'
+              - 'aoss:CreateAccessPolicy'
+              - 'aoss:CreateCollection'
+              - 'aoss:CreateSecurityPolicy'
+              - 'aoss:DeleteCollection'
+              - 'aoss:DeleteAccessPolicy'
+              - 'aoss:DeleteSecurityPolicy'
+              - 'aoss:ListCollections'
+              - 'aoss:UpdateCollection'
+              - 'bedrock:ApplyGuardrail'
+              - 'bedrock:AssociateAgentKnowledgeBase'
+              - 'bedrock:CreateAgent'
+              - 'bedrock:CreateAgentActionGroup'
+              - 'bedrock:CreateAgentAlias'
+              - 'bedrock:CreateDataSource'
+              - 'bedrock:CreateGuardrail'
+              - 'bedrock:CreateGuardrailVersion'
+              - 'bedrock:CreateKnowledgeBase'
+              - 'bedrock:DeleteAgent'
+              - 'bedrock:DeleteAgentActionGroup'
+              - 'bedrock:DeleteAgentAlias'
+              - 'bedrock:DeleteAgentVersion'
+              - 'bedrock:DeleteDataSource'
+              - 'bedrock:DeleteGuardrail'
+              - 'bedrock:DeleteKnowledgeBase'
+              - 'bedrock:DisassociateAgentKnowledgeBase'
+              - 'bedrock:GetAgent'
+              - 'bedrock:GetAgentActionGroup'
+              - 'bedrock:GetAgentAlias'
+              - 'bedrock:GetAgentVersion'
+              - 'bedrock:GetFoundationModel'
+              - 'bedrock:GetGuardrail'
+              - 'bedrock:GetKnowledgeBase'
+              - 'bedrock:InvokeAgent'
+              - 'bedrock:InvokeModel'
+              - 'bedrock:ListAgentActionGroups'
+              - 'bedrock:ListAgentAliases'
+              - 'bedrock:ListAgentVersions'
+              - 'bedrock:ListAgents'
+              - 'bedrock:ListFoundationModels'
+              - 'bedrock:ListGuardrails'
+              - 'bedrock:ListKnowledgeBases'
+              - 'bedrock:ListTagsForResource'
+              - 'bedrock:PrepareAgent'
+              - 'bedrock:Retrieve'
+              - 'bedrock:StartIngestionJob'
+              - 'bedrock:TagResource'
+              - 'bedrock:UntagResource'
+              - 'bedrock:UpdateAgent'
+              - 'bedrock:UpdateAgentActionGroup'
+              - 'bedrock:UpdateAgentAlias'
+              - 'bedrock:UpdateGuardrail'
+              - 'bedrock:RetrieveAndGenerate'
+              - 'iam:GetPolicy'
+              - 'iam:GetRole'
+              - 'iam:ListPolicies'
+              - 'lambda:ListFunctions'
+              - 's3:ListAllMyBuckets'
+              - 'sns:Publish'
+              - 'sns:Subscribe'
+              - 'sns:CreateTopic'
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - 's3:CreateBucket'
+              - 's3:DeleteBucket'
+              - 's3:DeleteObject'
+              - 's3:GetObject'
+              - 's3:ListBucket'
+              - 's3:PutObject'
+            Resource: 
+              - "arn:aws:s3:::*reduce-hallucinations-in-genai-apps*"
+              - !Sub "arn:aws:s3:::*sagemaker-${AWS::Region}-${AWS::AccountId}*"
+          - Effect: Allow
+            Action:
+              - 'lambda:AddPermission'
+              - 'lambda:CreateFunction'
+              - 'lambda:DeleteFunction'
+            Resource: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:*LambdaAgents*"
+          - Effect: Allow
+            Action:
+              - 'iam:PassRole'
+            Resource: 
+              - !Sub "arn:aws:iam::${AWS::AccountId}:role/AmazonBedrockExecutionRoleForAgents*"
+              - !Sub "arn:aws:iam::${AWS::AccountId}:role/AmazonBedrockLambdaExecutionRoleForAgents*"
+          - Effect: Allow
+            Action:
+              - 'iam:CreateServiceLinkedRole'
+            Resource: 
+              - "arn:aws:iam::*:role/aws-service-role/observability.aoss.amazonaws.com/AWSServiceRoleForAmazonOpenSearchServerless*"
+            Condition:
+              StringLike:
+                'iam:AWSServiceName': 'observability.aoss.amazonaws.com'
+          - Effect: Allow
+            Action:
+              - 'iam:AttachRolePolicy'
+              - 'iam:PutRolePolicy'
+            Resource: 
+              - "arn:aws:iam::*:role/aws-service-role/observability.aoss.amazonaws.com/AWSServiceRoleForAmazonOpenSearchServerless*"
+
+  AmazonBedrockExecutionRoleForAgentsAIAssistant03:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: AmazonBedrockExecutionRoleForAgentsAIAssistant05
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: bedrock.amazonaws.com
+          Action: sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+        - arn:aws:iam::aws:policy/service-role/AmazonS3ObjectLambdaExecutionRolePolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - !Ref SageMakerNotebookPolicy
+
+  AmazonBedrockLambdaExecutionRoleForAgentsAIAssistant03:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: AmazonBedrockLambdaExecutionRoleForAgentsAIAssistant05
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AmazonS3ObjectLambdaExecutionRolePolicy
+        - !Ref SageMakerNotebookPolicy
+
+  AIAssistantAgentRoleDefaultPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: !Sub ${AWS::StackName}-AIAssistantAgentRoleDefaultPolicy
+      PolicyDocument:
+        Statement:
+          - Action:
+              - bedrock:ApplyGuardrail
+              - bedrock:InvokeModel
+              - bedrock:Retrieve
+              - lambda:invokeFunction
+              - s3:GetObject
+            Effect: Allow
+            Resource: '*'
+        Version: 2012-10-17
+      Roles:
+        - !Ref AmazonBedrockExecutionRoleForAgentsAIAssistant03
+        - !Ref AmazonBedrockLambdaExecutionRoleForAgentsAIAssistant03
+
+  AmazonBedrockAgentBedrockFoundationModelPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: !Sub ${AWS::StackName}-AmazonBedrockAgentBedrockFoundationModelPolicy
+      PolicyDocument:
+        Statement:
+          - Action:
+              - bedrock:InvokeModel
+            Effect: Allow
+            Resource: 
+              - !Sub 'arn:aws:bedrock::${AWS::AccountId}:foundation-model/amazon.titan-embed-text-v2:0'
+              - !Sub 'arn:aws:bedrock::${AWS::AccountId}:foundation-model/anthropic.claude-3-sonnet-20240229-v1:0'
+              - !Sub 'arn:aws:bedrock::${AWS::AccountId}:foundation-model/anthropic.claude-v2'
+        Version: 2012-10-17
+      Roles:
+        - !Ref AmazonBedrockExecutionRoleForAgentsAIAssistant03
+        - !Ref AmazonBedrockLambdaExecutionRoleForAgentsAIAssistant03
+
+  AmazonBedrockAgentBedrockApplyGuardrailPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: !Sub ${AWS::StackName}-AmazonBedrockAgentBedrockApplyGuardrailPolicy
+      PolicyDocument:
+        Statement:
+          - Action:
+              - bedrock:ApplyGuardrail
+            Effect: Allow
+            Resource: !Sub 'arn:aws:bedrock::${AWS::AccountId}:guardrail/*'
+        Version: 2012-10-17
+      Roles:
+        - !Ref AmazonBedrockExecutionRoleForAgentsAIAssistant03
+        - !Ref AmazonBedrockLambdaExecutionRoleForAgentsAIAssistant03
+
+  AmazonBedrockAgentAOSSPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: !Sub ${AWS::StackName}-AmazonBedrockAgentAOSSPolicy
+      PolicyDocument:
+        Statement:
+          - Action:
+              - aoss:APIAccessAll
+            Effect: Allow
+            Resource: 
+              - !Sub 'arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/*'
+        Version: 2012-10-17
+      Roles:
+        - !Ref AmazonBedrockExecutionRoleForAgentsAIAssistant03
+        - !Ref AmazonBedrockLambdaExecutionRoleForAgentsAIAssistant03
+
+  SageMakerNotebookRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sagemaker.amazonaws.com
+            Action: sts:AssumeRole
+          - Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref SageMakerNotebookPolicy
+
+  SageMakerNotebookInstance:
+    Type: AWS::SageMaker::NotebookInstance
+    Properties:
+      InstanceType: !Ref InstanceType
+      RoleArn: !GetAtt SageMakerNotebookRole.Arn
+      LifecycleConfigName: !GetAtt SageMakerNotebookLifecycleConfig.NotebookInstanceLifecycleConfigName
+      VolumeSizeInGB: 20
+  
+  SageMakerNotebookLifecycleConfig:
+    Type: AWS::SageMaker::NotebookInstanceLifecycleConfig
+    Properties: 
+      NotebookInstanceLifecycleConfigName: !Join ['-', ['LifeCycleConfig', !Select [4, !Split ['-', !Select [2, !Split ['/', !Ref AWS::StackId]]]]]]
+      OnStart:
+        - Content:
+            Fn::Base64:
+             |
+              #!/bin/bash
+
+              set -ex
+
+              # OVERVIEW
+              # This script stops a SageMaker notebook once it's idle for more than 1 hour (default time)
+              # You can change the idle time for stop using the environment variable below.
+              # If you want the notebook the stop only if no browsers are open, remove the --ignore-connections flag
+              #
+              # Note that this script will fail if either condition is not met
+              #   1. Ensure the Notebook Instance has internet connectivity to fetch the example config
+              #   2. Ensure the Notebook Instance execution role permissions to SageMaker:StopNotebookInstance to stop the notebook 
+              #       and SageMaker:DescribeNotebookInstance to describe the notebook.
+              #
+
+              # PARAMETERS
+              IDLE_TIME=43200
+
+              echo "Fetching the autostop script"  >> log.txt
+              wget https://raw.githubusercontent.com/aws-samples/amazon-sagemaker-notebook-instance-lifecycle-config-samples/master/scripts/auto-stop-idle/autostop.py
+
+              echo "Detecting Python install with boto3 install"  >> log.txt
+
+              # Find which install has boto3 and use that to run the cron command. So will use default when available
+              # Redirect stderr as it is unneeded
+              CONDA_PYTHON_DIR=$(source /home/ec2-user/anaconda3/bin/activate /home/ec2-user/anaconda3/envs/JupyterSystemEnv && which python)
+              if $CONDA_PYTHON_DIR -c "import boto3" 2>/dev/null; then
+                  PYTHON_DIR=$CONDA_PYTHON_DIR
+              elif /usr/bin/python -c "import boto3" 2>/dev/null; then
+                  PYTHON_DIR='/usr/bin/python' 
+              else
+                  # If no boto3 just quit because the script won't work
+                  echo "No boto3 found in Python or Python3. Exiting..."  >> log.txt
+                  exit 1
+              fi
+
+              echo "Found boto3 at $PYTHON_DIR" >> log.txt
+
+              echo "Starting the SageMaker autostop script in cron"  >> log.txt
+
+              (crontab -l 2>/dev/null; echo "*/5 * * * * $PYTHON_DIR $PWD/autostop.py --time $IDLE_TIME --ignore-connections") | crontab - 
+              echo "Crontab created!" >> log.txt
+
+Outputs:
+  SageMakerNotebook:
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/sagemaker/home?region=${AWS::Region}#/notebook-instances/openNotebook/${SageMakerNotebookInstance.NotebookInstanceName}?view=lab
+  BedrockModelAccess:
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/bedrock/home?region=${AWS::Region}#/modelaccess
