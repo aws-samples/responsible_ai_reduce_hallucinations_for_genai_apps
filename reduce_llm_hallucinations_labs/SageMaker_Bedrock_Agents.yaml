@@ -80,7 +80,8 @@ Resources:
               - 's3:ListAllMyBuckets'
               - 'sns:Publish'
               - 'sns:Subscribe'
-              - 'sns:CreateTopic'
+              - 'sns:CreateTopic',
+              - 'sns:DeleteTopic'
             Resource: "*"
           - Effect: Allow
             Action:

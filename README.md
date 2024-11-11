@@ -19,7 +19,7 @@ https://docs.aws.amazon.com/pdfs/bedrock/latest/userguide/bedrock-ug.pdf
 
 Please execute `lab1.ipynb` before proceeding to `lab2.ipynb`.
 
-Note: Using the CloudFormation template and running the noteobooks end-to-end may create AWS service roles and AWS Managed KMS keys that will not incur cost in your account.
+Note: Using the CloudFormation template and running the noteobooks end-to-end may create AWS service roles and AWS Managed KMS keys that will not incur cost in your account. If you do not run the optional cleanup infrastructure cell for every notebook run, there may be S3 buckets, SNS left behind in the account which would need manual cleanup.
 
 ---
 __Troubleshooting: CFN template__
