@@ -11,4 +11,4 @@ requests-aws4auth==1.2.3
 pandas==1.5.3
 ragas==0.2.4
 unstructured==0.15.9
-llama_index
+llama_index==0.11.23
