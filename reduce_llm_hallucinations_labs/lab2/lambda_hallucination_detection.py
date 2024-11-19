@@ -17,7 +17,7 @@ import shlex
 
 
 #subprocess.Popen(shlex.split('mkdir aim325packages'), stdout=subprocess.PIPE)
-p = subprocess.Popen(shlex.split('pip install llama-index==0.11.23 ragas==0.2.4 pydantic datasets -q -t /tmp/ --no-cache-dir'), stdout=subprocess.PIPE) # nosemgrep
+p = subprocess.Popen(shlex.split('pip install llama-index==0.11.23 ragas==0.2.5 pydantic==2.9.2 datasets==3.1.0 -q -t /tmp/ --no-cache-dir'), stdout=subprocess.PIPE) # nosemgrep
 out, err = p.communicate()
 print(f"out lib install:: {out}")
 print(f"err lib install:: {err}")
