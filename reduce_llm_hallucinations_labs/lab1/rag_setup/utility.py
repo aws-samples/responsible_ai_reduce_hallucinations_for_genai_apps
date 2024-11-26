@@ -2,6 +2,7 @@ import json
 import boto3
 import random
 import time
+import sagemaker
 
 
 suffix = random.randrange(200, 900)
@@ -18,6 +19,19 @@ bedrock_execution_role_name = f'AmazonBedrockExecutionRoleForKnowledgeBase_{suff
 fm_policy_name = f'AmazonBedrockFoundationModelPolicyForKnowledgeBase_{suffix}'
 s3_policy_name = f'AmazonBedrockS3PolicyForKnowledgeBase_{suffix}'
 oss_policy_name = f'AmazonBedrockOSSPolicyForKnowledgeBase_{suffix}'
+
+
+def upload_user_guide_to_S3():
+    # download Bedrock user guide to local
+    !wget -P data/ -N https://docs.aws.amazon.com/pdfs/bedrock/latest/userguide/bedrock-ug.pdf --no-check-certificate
+
+    #upload User guide to S3
+    dataset_file_local_path = 'data/bedrock-ug.pdf'
+    input_s3_url = sagemaker.Session().upload_data(
+        path=dataset_file_local_path,
+        bucket=bucket_name
+    )
+    print(f"Upload the dataset to {input_s3_url}")
 
 
 def create_bedrock_execution_role(bucket_name):
