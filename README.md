@@ -1,6 +1,6 @@
 ## Responsible AI: Detecting and Reducing LLM Hallucination with Human in the Loop for Generative AI Applications
 
-This repository contains notebooks for the AWS Responsible AI __Veracity__ dimension and partnered with __Amazon Machine Learning University__ . Our mission is to make Machine Learning accessible to everyone. We have courses available across many topics of machine learning and believe knowledge of ML can be a key enabler for success. These notebooks represent some real-world use cases to detect and reduce LLM hallucinations with Amazon Bedrock Agents, Amazon Knowledge Bases and RAGAS evaluation framework.
+These notebooks represent some real-world use cases to detect and reduce LLM hallucinations with Amazon Bedrock Agents, Amazon Knowledge Bases and RAGAS evaluation framework.
 
 ---
 
