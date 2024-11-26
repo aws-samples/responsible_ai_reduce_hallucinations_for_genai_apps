@@ -1,10 +1,10 @@
 ## Responsible AI: Detecting and Reducing LLM Hallucination with Human in the Loop for Generative AI Applications
 
-These notebooks represent some real-world use cases to detect and reduce LLM hallucinations with Amazon Bedrock Agents, Amazon Knowledge Bases and RAGAS evaluation framework.
+These notebooks represent some real-world use cases to detect and reduce LLM hallucinations with [Amazon Bedrock Agents](https://aws.amazon.com/bedrock/agents/), [Amazon Bedrock Knowledge Bases](https://aws.amazon.com/bedrock/knowledge-bases/) and [RAGAS](https://docs.ragas.io/en/stable/) evaluation framework.
 
 ---
 
-__Project : Application Builder Assistant using Bedrock Agents and multiple knowledge bases__
+__Project : Hallucination Detection and Mitigation__
 
 | Title | Studio lab |
 | :---: | ---: |
@@ -14,8 +14,7 @@ __Project : Application Builder Assistant using Bedrock Agents and multiple know
 
 __Setup Instructions__
 
-The lab1 notebook will download the bedrock user guide from here:
-https://docs.aws.amazon.com/pdfs/bedrock/latest/userguide/bedrock-ug.pdf 
+The lab1 notebook will download the bedrock user guide from here: [AWS docs for Amazon Bedrock User Guide](https://docs.aws.amazon.com/pdfs/bedrock/latest/userguide/bedrock-ug.pdf )
 
 Please execute `lab1.ipynb` before proceeding to `lab2.ipynb`.
 
