@@ -1,9 +1,9 @@
 import json
-import boto3
 import random
 import time
-import sagemaker
 
+import boto3
+import sagemaker
 
 suffix = random.randrange(200, 900)
 boto3_session = boto3.session.Session()
@@ -235,10 +235,10 @@ def interactive_sleep(seconds: int):
 
 
 import json
-import boto3
 import random
 import time
 
+import boto3
 
 suffix = random.randrange(200, 900)
 boto3_session = boto3.session.Session()

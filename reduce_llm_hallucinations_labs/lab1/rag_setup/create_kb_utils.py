@@ -1,24 +1,22 @@
+import json
 import logging
-import boto3
+import os
+import pprint
 import random
 import time
+import uuid
 import zipfile
 from io import BytesIO
-import json
-import uuid
-import os
-from opensearchpy import OpenSearch, RequestsHttpConnection
-from requests_aws4auth import AWS4Auth
-from botocore.exceptions import ClientError
-from IPython.display import display, HTML
 
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
+import boto3
+from botocore.exceptions import ClientError
+from IPython.display import HTML, display
 from langchain_community.chat_models import BedrockChat
 from langchain_core.messages import HumanMessage
-import boto3
-
-import pprint
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from opensearchpy import OpenSearch, RequestsHttpConnection
+from requests_aws4auth import AWS4Auth
 
 pp = pprint.PrettyPrinter(indent=4)
 

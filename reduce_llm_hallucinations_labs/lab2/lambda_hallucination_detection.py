@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
-import json
-import re
-import logging
-import sqlite3
-import boto3
-import os
-import sys
-import subprocess
 import csv
+import json
+import logging
+import os
+import re
 import shlex
+import sqlite3
+import subprocess
+import sys
 
+import boto3
 
 # pip install custom package to /tmp/ and add to path
 
@@ -43,22 +43,21 @@ subprocess.call('pip install ragas pydantic datasets -q -t /tmp/ --no-cache-dir'
 sys.path.insert(1, '/tmp/')
 """
 
-from datasets import Dataset
-from ragas import evaluate
-from ragas.metrics import answer_relevancy, answer_correctness
+import json
+import pprint
+import time
 
 import boto3
-import pprint
-
+from botocore.config import Config
+from datasets import Dataset
+from langchain.chains import RetrievalQA
+from langchain.embeddings import BedrockEmbeddings
 # from botocore.client import Config
 from langchain.llms.bedrock import Bedrock
-from langchain_community.chat_models.bedrock import BedrockChat
-from langchain.embeddings import BedrockEmbeddings
 from langchain.retrievers.bedrock import AmazonKnowledgeBasesRetriever
-from langchain.chains import RetrievalQA
-
-import boto3, time, json
-from botocore.config import Config
+from langchain_community.chat_models.bedrock import BedrockChat
+from ragas import evaluate
+from ragas.metrics import answer_correctness, answer_relevancy
 
 credentials_profile_name = "default"
 session = boto3.session.Session()
