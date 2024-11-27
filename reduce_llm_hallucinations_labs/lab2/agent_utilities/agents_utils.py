@@ -1,17 +1,16 @@
-from IPython.display import display, HTML
-import pandas as pd
-
-import pprint
-import logging
 import json
-from IPython.display import JSON
-import os, shutil
+import logging
+import os
+import pprint
+import shutil
 
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
+import boto3
+import pandas as pd
+from IPython.display import HTML, JSON, display
 from langchain_community.chat_models import BedrockChat
 from langchain_core.messages import HumanMessage
-import boto3
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
 
 logging.basicConfig(
     format="[%(asctime)s] p%(process)s {%(filename)s:%(lineno)d} %(levelname)s - %(message)s",

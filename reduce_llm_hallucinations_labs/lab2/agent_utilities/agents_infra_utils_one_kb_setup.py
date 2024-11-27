@@ -1,16 +1,17 @@
+import json
 import logging
-import boto3
+import os
+import pprint
 import random
 import time
+import uuid
 import zipfile
 from io import BytesIO
-import json
-import uuid
-import pprint
-import os
+
+import boto3
+from botocore.exceptions import ClientError
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
-from botocore.exceptions import ClientError
 
 ### NOTE: change the logging level to DEBUG if infrasetup fails to get more trace on the issue
 logging.basicConfig(

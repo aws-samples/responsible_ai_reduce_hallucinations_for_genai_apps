@@ -1,8 +1,8 @@
 import json
-import boto3
 import random
 import time
 
+import boto3
 
 suffix = random.randrange(200, 900)
 boto3_session = boto3.session.Session()
