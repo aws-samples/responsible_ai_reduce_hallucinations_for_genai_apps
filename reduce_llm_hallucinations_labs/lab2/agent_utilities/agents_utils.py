@@ -32,6 +32,35 @@ model_kwargs = {
     "stop_sequences": ["\n\nHuman"],
 }
 
+def generate_message_claude(
+    query, 
+    bedrock_runtime_client,
+    system_prompt="", 
+    max_tokens=1000,
+    model_id='anthropic.claude-3-sonnet-20240229-v1:0',
+    temperature=1,
+    top_p=0.999,
+    top_k=250
+):
+    # Prompt with user turn only.
+    user_message = {"role": "user", "content": query}
+    messages = [user_message]
+    body = json.dumps(
+        {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": max_tokens,
+            "system": system_prompt,
+            "messages": messages,
+            "temperature": temperature,
+            "top_p": top_p,
+            "top_k": top_k
+        }
+    )
+
+    response = bedrock_runtime_client.invoke_model(body=body, modelId=model_id)
+    response_body = json.loads(response.get('body').read())
+    return response_body['content'][0]['text']
+
 
 def test_llm_call(input_prompt):
     llm = BedrockChat(
