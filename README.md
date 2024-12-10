@@ -10,6 +10,10 @@ __Project : Hallucination Detection and Mitigation__
 | :---: | ---: |
 | Chat with LLMs grounded by Amazon Guardrails and querying Amazon Knowledge Bases | lab1/lab1.ipynb|
 | Detecting and mitigating hallucinations with Amazon Bedrock Agents and Amazon Knowledge Bases | lab2/lab2.ipynb|
+
+
+If you have an event access code from a AWS hosted event or Self-paced event, you can run these labs using this [Workshop Studio Link](https://catalog.workshops.aws/workshops/1fa309f2-c771-42d5-87bc-e8f919e7bcc9/en-US)
+
 ---
 
 __Setup Instructions__
