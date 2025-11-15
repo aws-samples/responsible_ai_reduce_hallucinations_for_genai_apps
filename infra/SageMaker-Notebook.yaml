@@ -1,0 +1,416 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  A basic SageMaker AI Studio deployment including permissions for Amazon Bedrock and related
+  services; pre-created JupyterLab and Code Editor spaces with a pre-cloned code repository and
+  Docker access enabled. Not recommended for use in production environments.
+
+Parameters:
+  UserProfileName:
+    Type: String
+    Description: Name of the SageMaker AI Studio user to create
+    Default: 'workshop-user'
+  DomainName:
+    Type: String
+    Description: Name of the SageMaker AI Domain to create
+    Default: 'reduce-hallucinations-workshop'
+  SpaceNamePrefix:
+    Type: String
+    Description: >-
+      Prefix for names of the JupyterLab and Code Editor spaces to be created for the user (to
+      which '-jupyter' and '-code' will be appended)
+    Default: 'workshop'
+  NotebookInstanceType:
+    Type: String
+    Description: Instance type for SageMaker Studio notebooks
+    Default: 'ml.m5.xlarge'
+    ConstraintDescription: >
+      Must be valid instance type for SageMaker AI Studio Code Editor and JupyterLab
+  CodeRepo:
+    Type: String
+    Description: URL of code repository to pre-clone into notebook environments
+    Default: https://github.com/aws-samples/responsible_ai_reduce_hallucinations_for_genai_apps
+  CodeRepoBranch:
+    Type: String
+    Default: main
+    Description: >-
+      Branch (or commit hash) of the repository to deploy from. Ignored if CodeRepo is not a git URL
+
+Resources:
+
+  LambdaExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - "sts:AssumeRole"
+      Path: /
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess'
+        - 'arn:aws:iam::aws:policy/AmazonS3FullAccess'
+        - 'arn:aws:iam::aws:policy/IAMFullAccess'
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+        - 'arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess'
+
+  SageMakerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - sagemaker.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AmazonBedrockFullAccess'
+        - 'arn:aws:iam::aws:policy/AWSCloudFormationFullAccess'
+        - 'arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess'
+        - 'arn:aws:iam::aws:policy/IAMReadOnlyAccess'
+        - 'arn:aws:iam::aws:policy/AmazonSageMakerFullAccess'
+      Policies:
+        - PolicyName: BedrockAccess
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'bedrock:*'
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - 'aws-marketplace:Subscribe'
+                Resource: "*"
+                Condition:
+                  ForAnyValue:StringEquals:
+                    aws-marketplace:ProductId:
+                      - prod-6dw3qvchef7zy
+              - Effect: Allow
+                Action:
+                  - 'aws-marketplace:ListAgreementApprovalRequests'
+                  - 'aws-marketplace:ListAgreementRequests'
+                  - 'aws-marketplace:ListEntitlementDetails'
+                  - 'aws-marketplace:Unsubscribe'
+                  - 'aws-marketplace:ViewSubscriptions'
+                Resource: "*"
+              - Effect: Deny
+                Action:
+                  - bedrock:CreateModelCustomizationJob
+                  - bedrock:StopModelCustomizationJob
+                  - bedrock:GetModelCustomizationJob
+                  - bedrock:ListModelCustomizationJobs
+                Resource: "*"
+        - PolicyName: BedrockOtherFeaturesAndAgentSelfReflect
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'lambda:ListFunctions'
+                  - 's3:ListAllMyBuckets'
+                  - 'sns:Publish'
+                  - 'sns:Subscribe'
+                  - 'sns:CreateTopic'
+                  - 'sns:DeleteTopic'
+                Resource: "*"
+              - Sid: ECRAllAccess
+                Effect: Allow
+                Action:
+                  - 'ecr:*'
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - 'lambda:AddPermission'
+                  - 'lambda:CreateFunction'
+                  - 'lambda:DeleteFunction'
+                Resource: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:*LambdaAgents*"
+              - Effect: Allow
+                Action:
+                  - 'iam:PassRole'
+                Resource: 
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/*"
+                Condition:
+                  StringEquals:
+                    'iam:PassedToService': bedrock.amazonaws.com
+                    'iam:ResourceTag/Project': HallucinationWorkshop
+        - PolicyName: OpenSearchAllAccess
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'aoss:*'
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - 'iam:CreateServiceLinkedRole'
+                Resource: 
+                  - "arn:aws:iam::*:role/aws-service-role/observability.aoss.amazonaws.com/AWSServiceRoleForAmazonOpenSearchServerless*"
+                Condition:
+                  StringLike:
+                    'iam:AWSServiceName': observability.aoss.amazonaws.com
+              - Effect: Allow
+                Action:
+                  - 'iam:AttachRolePolicy'
+                  - 'iam:PutRolePolicy'
+                Resource: 
+                  - "arn:aws:iam::*:role/aws-service-role/observability.aoss.amazonaws.com/AWSServiceRoleForAmazonOpenSearchServerless*"
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:PutObject'
+                  - 's3:DeleteObject'
+                  - 's3:ListBucket'
+                Resource: arn:aws:s3:::*
+              - Effect: Allow
+                Action:
+                  - 's3:CreateBucket'
+                  - 's3:DeleteBucket'
+                  - 's3:DeleteObject'
+                  - 's3:GetObject'
+                  - 's3:ListBucket'
+                  - 's3:PutObject'
+                Resource: "arn:aws:s3:::*-agent-kb*"
+
+  DefaultVpcLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import cfnresponse
+
+          ec2 = boto3.client('ec2')
+
+          def lambda_handler(event, context):              
+              if 'RequestType' in event and event['RequestType'] == 'Create':
+                  vpc_id = get_default_vpc_id()
+                  subnets = get_subnets_for_vpc(vpc_id)
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {'VpcId': vpc_id, 'Subnets': subnets}, '')
+              else:
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, '')
+
+          def get_default_vpc_id():
+              vpcs = ec2.describe_vpcs(Filters=[{'Name': 'is-default', 'Values': ['true']}])
+              vpc_id = vpcs['Vpcs'][0]['VpcId']
+              return vpc_id
+
+          def get_subnets_for_vpc(vpcId):
+              response = ec2.describe_subnets(Filters=[{'Name': 'vpc-id', 'Values': [vpcId]}])
+              subnet_ids = [subnet['SubnetId'] for subnet in response['Subnets']]
+              return subnet_ids
+      Description: Return default VPC ID and Subnets
+      Handler: index.lambda_handler
+      MemorySize: 512
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: python3.9
+      Timeout: 5
+
+  DefaultVpcFinder:
+    Type: Custom::ResourceForFindingDefaultVpc
+    Properties:
+      ServiceToken: !GetAtt DefaultVpcLambda.Arn
+
+  CodeEditorLifecycleConfig:
+    Type: AWS::SageMaker::StudioLifecycleConfig
+    Properties:
+      StudioLifecycleConfigAppType: CodeEditor
+      # Note ${!...} escapes ${} for CFn !Sub function:
+      StudioLifecycleConfigContent:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -ex
+
+          # As per: https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository
+          # Add Docker's official GPG key and install Docker CLI
+          sudo apt-get -y install ca-certificates curl
+          sudo install -m 0755 -d /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+          sudo chmod a+r /etc/apt/keyrings/docker.gpg
+          echo \
+            "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+            $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+            sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+          sudo apt-get -y update
+          sudo apt-get install -y docker-buildx-plugin docker-ce-cli docker-compose-plugin
+
+          if [ ! -z "${!SM_JOB_DEF_VERSION}" ]; then
+            echo "Running in job mode - skip code clone"
+          elif [ -d workshop ]; then
+            echo "'workshop' folder exists - skip cloning repo"
+          else
+            export PUBLIC_REPO="${CodeRepo}"
+            export PUBLIC_REPO_BRANCH="${CodeRepoBranch}"
+            case "$PUBLIC_REPO" in
+              s3://*)
+                aws s3 cp "$PUBLIC_REPO" workshop.zip && unzip -oq workshop.zip -d workshop
+                rm workshop.zip
+                export PUBLIC_REPO_IS_ARCHIVE=true
+                ;;
+              *.zip)
+                curl "$PUBLIC_REPO" -o workshop.zip && unzip -oq workshop.zip -d workshop
+                rm workshop.zip
+                export PUBLIC_REPO_IS_ARCHIVE=true
+                ;;
+              *)
+                git clone --single-branch -b $PUBLIC_REPO_BRANCH $PUBLIC_REPO workshop
+                export PUBLIC_REPO_IS_ARCHIVE=false
+                ;;
+            esac
+            cd workshop
+            if [ "$PUBLIC_REPO_IS_ARCHIVE" = "true" ]; then
+              N_EXTRACTED_SUBFOLDERS="$(find . -type d -mindepth 1 -maxdepth 1 | wc -l)"
+              N_EXTRACTED_SUBFILES="$(find . -type f -mindepth 1 -maxdepth 1 | wc -l)"
+              if [ \( $N_EXTRACTED_SUBFOLDERS -eq "1" \) -a \( $N_EXTRACTED_SUBFILES -eq "0" \) ]; then
+                echo "Zip extracted one top-level folder. Treating that as code root"
+                cd "$(ls -d */|head -n 1)"
+              fi
+            fi
+          fi
+      StudioLifecycleConfigName: !Sub 'CodeEditorLCC-${DomainName}'
+
+  JupyterLifecycleConfig:
+    Type: AWS::SageMaker::StudioLifecycleConfig
+    Properties:
+      StudioLifecycleConfigAppType: JupyterLab
+      # Note ${!...} escapes ${} for CFn !Sub function:
+      StudioLifecycleConfigContent:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -ex
+
+          # As per: https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository
+          # Add Docker's official GPG key and install Docker CLI
+          sudo apt-get -y install ca-certificates curl
+          sudo install -m 0755 -d /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+          sudo chmod a+r /etc/apt/keyrings/docker.gpg
+          echo \
+            "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+            $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+            sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+          sudo apt-get -y update
+          sudo apt-get install -y docker-buildx-plugin docker-ce-cli docker-compose-plugin
+
+          if [ ! -z "${!SM_JOB_DEF_VERSION}" ]; then
+            echo "Running in job mode - skip code clone"
+          elif [ -d workshop ]; then
+            echo "'workshop' folder exists - skip cloning repo"
+          else
+            export PUBLIC_REPO="${CodeRepo}"
+            export PUBLIC_REPO_BRANCH="${CodeRepoBranch}"
+            case "$PUBLIC_REPO" in
+              s3://*)
+                aws s3 cp "$PUBLIC_REPO" workshop.zip && unzip -oq workshop.zip -d workshop
+                rm workshop.zip
+                export PUBLIC_REPO_IS_ARCHIVE=true
+                ;;
+              *.zip)
+                curl "$PUBLIC_REPO" -o workshop.zip && unzip -oq workshop.zip -d workshop
+                rm workshop.zip
+                export PUBLIC_REPO_IS_ARCHIVE=true
+                ;;
+              *)
+                git clone --single-branch -b $PUBLIC_REPO_BRANCH $PUBLIC_REPO workshop
+                export PUBLIC_REPO_IS_ARCHIVE=false
+                ;;
+            esac
+            cd workshop
+            if [ "$PUBLIC_REPO_IS_ARCHIVE" = "true" ]; then
+              N_EXTRACTED_SUBFOLDERS="$(find . -type d -mindepth 1 -maxdepth 1 | wc -l)"
+              N_EXTRACTED_SUBFILES="$(find . -type f -mindepth 1 -maxdepth 1 | wc -l)"
+              if [ \( $N_EXTRACTED_SUBFOLDERS -eq "1" \) -a \( $N_EXTRACTED_SUBFILES -eq "0" \) ]; then
+                echo "Zip extracted one top-level folder. Treating that as code root"
+                cd "$(ls -d */|head -n 1)"
+              fi
+            fi
+          fi
+      StudioLifecycleConfigName: !Sub 'JupyterLCC-${DomainName}'
+
+  StudioDomain:
+    Type: AWS::SageMaker::Domain
+    Properties:
+      AppNetworkAccessType: PublicInternetOnly
+      AuthMode: IAM
+      DefaultSpaceSettings:
+        ExecutionRole: !GetAtt SageMakerExecutionRole.Arn
+      DefaultUserSettings:
+        CodeEditorAppSettings:
+          LifecycleConfigArns:
+            - !GetAtt CodeEditorLifecycleConfig.StudioLifecycleConfigArn
+        ExecutionRole: !GetAtt SageMakerExecutionRole.Arn
+        JupyterLabAppSettings:
+          LifecycleConfigArns:
+            - !GetAtt JupyterLifecycleConfig.StudioLifecycleConfigArn
+      DomainName: !Ref DomainName
+      DomainSettings:
+        DockerSettings:
+          EnableDockerAccess: ENABLED
+        # Below caused 'bad request' on with sign-in... Does this only work with SSO?
+        # ExecutionRoleIdentityConfig: USER_PROFILE_NAME
+      SubnetIds: !GetAtt DefaultVpcFinder.Subnets
+      TagPropagation: ENABLED
+      VpcId: !GetAtt DefaultVpcFinder.VpcId
+
+  UserProfile:
+    Type: AWS::SageMaker::UserProfile
+    Properties:
+      DomainId: !GetAtt StudioDomain.DomainId
+      UserProfileName: !Ref UserProfileName
+      UserSettings:
+        ExecutionRole: !GetAtt SageMakerExecutionRole.Arn
+
+  CodeEditorSpace:
+    Type: AWS::SageMaker::Space
+    DependsOn:
+      - UserProfile
+    Properties:
+      DomainId: !GetAtt StudioDomain.DomainId
+      SpaceName: !Sub '${SpaceNamePrefix}-code'
+      SpaceSettings:
+        AppType: CodeEditor
+        RemoteAccess: ENABLED
+        CodeEditorAppSettings:
+          DefaultResourceSpec:
+            InstanceType: !Ref NotebookInstanceType
+            LifecycleConfigArn: !GetAtt CodeEditorLifecycleConfig.StudioLifecycleConfigArn
+        SpaceStorageSettings:
+          EbsStorageSettings:
+             EbsVolumeSizeInGb: 25
+      SpaceSharingSettings:
+        SharingType: Private
+      OwnershipSettings:
+        OwnerUserProfileName: !Ref UserProfileName
+
+  JupyterLabSpace:
+    Type: AWS::SageMaker::Space
+    DependsOn:
+      - UserProfile
+    Properties:
+      DomainId: !GetAtt StudioDomain.DomainId
+      SpaceName: !Sub '${SpaceNamePrefix}-jupyter'
+      SpaceSettings:
+        AppType: JupyterLab
+        JupyterLabAppSettings:
+          DefaultResourceSpec:
+            InstanceType: !Ref NotebookInstanceType
+            LifecycleConfigArn: !GetAtt JupyterLifecycleConfig.StudioLifecycleConfigArn
+        SpaceStorageSettings:
+          EbsStorageSettings:
+             EbsVolumeSizeInGb: 25
+      SpaceSharingSettings:
+        SharingType: Private
+      OwnershipSettings:
+        OwnerUserProfileName: !Ref UserProfileName
