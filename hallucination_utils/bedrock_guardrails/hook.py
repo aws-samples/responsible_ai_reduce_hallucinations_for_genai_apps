@@ -191,9 +191,9 @@ class BedrockGuardrailHook(HookProvider):
         # We'll loop *backwards* through `event.agent.messages`, and reverse the content later:
         guard_content_rev = []
         has_grounding_source = False
-        # (Note that *yes* the current event's message has not yet been added to
+        # (Note that the current event's message has *not yet* been added to
         # `event.agent.messages` when this handler is called)
-        for message in event.agent.messages[::-1]:
+        for message in [current_message] + event.agent.messages[::-1]:
             message_role = message.get("role")
             for block in message.get("content", []):
                 if "text" in block:
