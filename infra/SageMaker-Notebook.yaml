@@ -100,6 +100,11 @@ Resources:
                   - 'aws-marketplace:Unsubscribe'
                   - 'aws-marketplace:ViewSubscriptions'
                 Resource: "*"
+              - Sid: AllowAICodeRecsInSageMaker
+                Effect: Allow
+                Action:
+                  - 'codewhisperer:GenerateRecommendations'
+                Resource: "*"
               - Effect: Deny
                 Action:
                   - bedrock:CreateModelCustomizationJob
