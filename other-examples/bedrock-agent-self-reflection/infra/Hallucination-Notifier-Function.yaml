@@ -1,0 +1,393 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >-
+  Deploy a Lambda-based Tool that Amazon Bedrock Agents can use to check an AI-generated answer for
+  likely hallucinations before returning to user - and escalate to a human representative via SNS
+  notification when needed.
+
+Parameters:
+  AllowedAgentIdPattern:
+    Type: String
+    Default: '*'
+    Description: >-
+      ID of a particular Bedrock Agent that should have permission to invoke the tool, or a pattern
+      for multiple agents. Default: All Bedrock Agents in this AWS Account+region
+  AllowedKnowledgeBaseIdPattern:
+    Type: String
+    Default: '*'
+    Description: >-
+      ID of a particular Bedrock Knowledge Base that the created Agent execution role should have
+      permission to query, or a pattern for multiple knowledge bases. Default: All Knowledge Bases
+      in this AWS Account+region
+
+Resources:
+  # SNS topic for outbound requests for support from humans
+  OutboundSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: Hallucination-Support-Requests
+
+  # SNS topic for inbound updates that support has been engaged
+  CallbackSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: Hallucination-Support-Callback
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: ToolPermissions
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: InvokeBedrockModels
+                Effect: Allow
+                Action:
+                  - 'bedrock:InvokeModel'
+                  - 'bedrock:InvokeModelWithResponseStream'
+                Resource:
+                  - 'arn:aws:bedrock:*::foundation-model/*'
+              - Sid: SendSNSNotifications
+                Effect: Allow
+                Action:
+                  - 'sns:Publish'
+                Resource:
+                  - !Ref OutboundSNSTopic
+
+  # Lambda function implementing the tool
+  HandlerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        ZipFile: |
+          """Amazon Bedrock Agents tool handler Lambda to check for hallucination risk and escalate to humans
+
+          This AWS Lambda handler (see `lambda_handler()`) exposes a tool for Amazon Bedrock Agents to check
+          whether a generated answer seems likely to contain hallucinations, and if so escalate to engage a
+          human via Amazon SNS notification.
+          """
+          # SPDX-License-Identifier: MIT-0
+          # Python Built-Ins:
+          import json
+          import logging
+          import os
+          import subprocess
+          import sys
+
+          # Set up logging (BEFORE imports might create their own loggers)
+          if len(logging.getLogger().handlers) > 0:
+              # The Lambda environment pre-configures a logging handler, and if a handler is already
+              # configured then `.basicConfig` doesn't do anything - so instead set the level directly:
+              logging.getLogger().setLevel(logging.INFO)
+          else:
+              logging.basicConfig(level=logging.INFO)
+          logger = logging.getLogger(__name__)
+
+          # Install dependencies to /tmp during init, and add /tmp to PYTHONPATH
+          # NOTE: This is not a good practice in general because it introduces significant cold-starts and
+          # 'hides' the dependencies from static code security scanners, but we're doing it here because:
+          # 1. The required dependencies exceed the limit for zip-based Lambda function size
+          # 2. A container image-based function (although probably the best solution for real deployments)
+          #    would excessively complicate sharing & deployment of the published sample
+          # Recommend to refactor to option 2 for production environments.
+          logger.info("Installing dependencies...")
+          p = subprocess.run(
+              [
+                  "pip",
+                  "install",
+                  "-q",
+                  "-t",
+                  "/tmp/",
+                  "--no-cache-dir",
+                  "langchain-aws>=1,<2",
+                  # "ragas>=0.3,<0.4", breaks with some git executable error
+                  "ragas==0.2.15",
+              ],
+              capture_output=True,
+          )
+          print(p.stdout.decode())
+          print(p.stderr.decode())
+          if p.returncode != 0:
+              raise RuntimeError("Failed to install dependencies!")
+          sys.path.insert(1, "/tmp/")
+
+          # External Dependencies:
+          import boto3  # AWS SDK for Python
+          from botocore.config import Config as BotoConfig
+          from langchain_aws import BedrockEmbeddings, ChatBedrockConverse
+          from ragas import SingleTurnSample
+          from ragas.embeddings import LangchainEmbeddingsWrapper
+          from ragas.llms import LangchainLLMWrapper
+          from ragas.metrics import AnswerRelevancy
+
+          # Env-var based configurations:
+          EVAL_GENERATION_MODEL_ID = os.environ.get(
+              "EVAL_GENERATION_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0"
+          )
+          EVAL_EMBEDDING_MODEL_ID = os.environ.get(
+              "EVAL_EMBEDDING_MODEL_ID", "amazon.titan-embed-text-v2:0"
+          )
+          HALLUCINATION_SCORE_THRESHOLD = float(os.environ.get("HALLUCINATION_SCORE_THRESHOLD", "0.85"))
+          OUTBOUND_SNS_TOPIC_ARN = os.environ["OUTBOUND_SNS_TOPIC_ARN"]
+
+          # Connect to AWS services:
+          boto_sess = boto3.session.Session()
+          region_name = boto_sess.region_name
+          account_number = boto_sess.client("sts").get_caller_identity().get("Account")
+          bedrock_config = BotoConfig(
+              # Increase standard timeouts since Bedrock can take some time to respond to long requests
+              connect_timeout=60 * 10,
+              read_timeout=60 * 10,
+          )
+          bedrock_client = boto_sess.client(service_name="bedrock-runtime", config=bedrock_config)
+          bedrock_service = boto_sess.client(service_name="bedrock", config=bedrock_config)
+          bedrock_agent_client = boto_sess.client("bedrock-agent-runtime", config=bedrock_config)
+          sns_client = boto_sess.client("sns")
+
+          # Create Ragas models (via LangChain) and initialize metric scorers:
+          llm_for_evaluation = LangchainLLMWrapper(
+              ChatBedrockConverse(model=EVAL_GENERATION_MODEL_ID, client=bedrock_client)
+          )
+          bedrock_embeddings = LangchainEmbeddingsWrapper(
+              BedrockEmbeddings(model_id=EVAL_EMBEDDING_MODEL_ID, client=bedrock_client)
+          )
+          answer_relevancy = AnswerRelevancy(embeddings=bedrock_embeddings, llm=llm_for_evaluation)
+
+          def evaluate_response(question: str, response: str) -> float:
+              """Evaluate a single proposed response to a user's question using Ragas
+              
+              Returns an overall score
+              """
+              datum = SingleTurnSample(
+                  user_input=question,
+                  response=response,
+              )
+              # Seems like Lambda handlers don't like async, so we'll use Ragas' sync methods even though
+              # they're not preferred:
+              answer_relevancy_score = answer_relevancy.single_turn_score(datum)
+
+              logger.info("Ragas scores answer_relevancy=%s", answer_relevancy_score)
+              
+              return answer_relevancy_score
+
+          def request_human_intervention(question, kb_response):
+              """Send a request for human intervention to the configured SNS topic"""
+              complete_message_to_topic = f"""A Customer needs help with the following question:
+              {question}
+
+          The AI-generated response below did not meet our quality threshold.
+
+          Please join the customer chat to assist them further. Thank you.
+
+          ======== REJECTED AI-GENERATED RESPONSE ========
+              {kb_response}
+          ================================================
+          """
+              response = sns_client.publish(
+                  TopicArn=OUTBOUND_SNS_TOPIC_ARN, Message=complete_message_to_topic
+              )
+              logger.info(
+                  "Sent notification to SNS topic %s. Got Response: %s", OUTBOUND_SNS_TOPIC_ARN, response
+              )
+              return response
+
+          def detect_measure_hallucination(question: str, kb_response: str):
+              """Evaluate proposed `kb_response` to `question`, engage support if needed, and return result
+
+              (Core implementation of the agent tool, after input parameters are parsed and validated)
+              """
+              score = evaluate_response(question, kb_response)
+              if score < HALLUCINATION_SCORE_THRESHOLD:
+                  logger.info(
+                      "Response failed hallucination check with score %s - requesting human intervention",
+                      score,
+                  )
+                  request_human_intervention(question, kb_response)
+                  response = "\n\n".join((
+                      f"Sorry I couldn't find a confident answer to your question '{question}'",
+                      "Please wait while I connect you to a human advisor..."
+                  ))
+              else:
+                  logger.info("Response passed hallucination check with score %s", score)
+                  response = kb_response
+
+              return {
+                  "finalAPIResponse": response,
+                  "hallucinationScore": score,
+              }
+
+          def tool_detect_measure_hallucination(parameters: list) -> str:
+              """Process a Bedrock Agent's detect_measure_hallucination function call
+              
+              Includes parsing and validating parameters given by the LLM
+              """
+              question_param = next(
+                  (param for param in parameters if param["name"] == "question"), None
+              )
+              if not question_param or not question_param.get("value"):
+                  return "'question' parameter is mandatory and should be the question the user asked."
+              question = question_param["value"]
+
+              kb_response_param = next(
+                  (param for param in parameters if param["name"] == "kbResponse"), None
+              )
+              if not kb_response_param or not kb_response_param.get("value"):
+                  return (
+                      "'kbResponse' parameter is mandatory and should be the response from the knowledge "
+                      "base."
+                  )
+              kb_response = kb_response_param["value"]
+              
+              return json.dumps(detect_measure_hallucination(question, kb_response), indent=2)
+
+          def handle_agent_request(event, context):
+              """Handle Lambda event triggered by an Amazon Bedrock Agent function call"""
+              # Parse out Bedrock Agents request format:
+              action_group = event.get("actionGroup", "")
+              function_name = event.get("function", "")
+              parameters = event.get("parameters", [])
+
+              if function_name == "detect_measure_hallucination":
+                  response_body = tool_detect_measure_hallucination(parameters)
+              else:
+                  response_body = f"{action_group}:{function_name} is not a valid API, try another one."
+
+              response = {
+                  "response": {
+                      "actionGroup": action_group,
+                      "function": function_name,
+                      "functionResponse": {
+                          "responseBody": {"TEXT": {"body": response_body}}
+                      },
+                  }
+              }
+              logger.info("Response: %s", response)
+              return response
+
+          def process_sns_message(record):
+              """TODO: SNS callback is actually a no-op at this time
+              
+              You could put whatever logic you need here to respond to human agent intervention
+              """
+              message = record["Sns"]["Message"]
+              print(f"Received SNS message ::  {message}")
+              return message
+
+          def handle_sns_callback(event, context):
+              """Handle Lambda event triggered by SNS callback after agent connects"""
+              for record in event["Records"]:
+                  # Swallow errors so one bad item in batch doesn't prevent the rest processing:
+                  try:
+                      process_sns_message(record)
+                  except Exception:
+                      logger.exception("Error occurred while processing SNS message %s", record)
+              logger.info("SNS callback completed")
+
+          def lambda_handler(event, context):
+              """Main Lambda handler - checks event type and invokes relevant sub-function"""
+              logger.info("Invoked with event: %s", event)
+              if "Records" in event:
+                  return handle_sns_callback(event, context)
+              else:
+                  return handle_agent_request(event, context)
+
+      Description: Bedrock Agent tool for checking hallucinations in AI-generated answers
+      Environment:
+        Variables:
+          OUTBOUND_SNS_TOPIC_ARN: !Ref OutboundSNSTopic
+          PYTHONUNBUFFERED: '1'  # Flush logs immediately for better crash debugging
+      EphemeralStorage:
+        Size: 1024
+      Handler: index.lambda_handler
+      MemorySize: 512  # Inline dependency install is main pressure here
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: python3.13
+      Timeout: 360
+
+  # Permission for Bedrock Agent(s) to invoke the function:
+  AgentInvokeHandlerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt HandlerFunction.Arn
+      Action: 'lambda:InvokeFunction'
+      Principal: bedrock.amazonaws.com
+      SourceArn: !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/${AllowedAgentIdPattern}'
+
+  # Permission for callback SNS topic to invoke the function
+  CallbackInvokeHandlerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt HandlerFunction.Arn
+      Action: 'lambda:InvokeFunction'
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref CallbackSNSTopic
+
+  AgentExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - bedrock.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Sub '${AWS::AccountId}'
+              ArnLike:
+                aws:SourceArn: !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/${AllowedAgentIdPattern}'
+      Policies:
+        - PolicyName: AgentPermissions
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: BedrockInvokeModels
+                Effect: Allow
+                Action:
+                  - 'bedrock:InvokeModel'
+                  - 'bedrock:InvokeModelWithResponseStream'
+                Resource:
+                  - 'arn:aws:bedrock:*::foundation-model/*'
+              - Sid: BedrockQueryKnowledgeBases
+                Effect: Allow
+                Action:
+                  - 'bedrock:Retrieve'
+                  - 'bedrock:RetrieveAndGenerate'
+                Resource:
+                  - !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${AllowedKnowledgeBaseIdPattern}'
+              - Sid: LambdaInvokeTools
+                Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                Resource:
+                  - !GetAtt HandlerFunction.Arn
+      Tags:
+        - Key: Project
+          Value: HallucinationWorkshop
+
+Outputs:
+  AgentExecutionRoleArn:
+    Description: ARN of IAM role to be associated to the Amazon Bedrock Agent
+    Value: !GetAtt AgentExecutionRole.Arn
+  FunctionArn:
+    Description: ARN of the AWS Lambda function implementing the agent tool
+    Value: !GetAtt HandlerFunction.Arn
+  OutboundSnsTopicArn:
+    Description: ARN of the SNS topic to subscribe for requests for human support
+    Value: !Ref OutboundSNSTopic

@@ -1,0 +1,741 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::LanguageExtensions  # (Required for Fn::ToJsonString)
+Description: >-
+  Deploy an Amazon Bedrock Knowledge Base backed by an OpenSearch Serverless vector index and
+  Amazon S3 data source, and pre-load source document(s).
+Parameters:
+  ProvisioningPrincipal:
+    Default: role/WSParticipantRole
+    Description: >-
+      IMPORTANT: The identity with which you're deploy this stack. This is needed to enable
+      creation of the OpenSearch collection and index on your behalf. Default
+      'role/WSParticipantRole' assumes you're using this template in an AWS-led workshop with
+      temporary accounts provided. Otherwise, provide your own role or user.
+    Type: String
+
+  KnowledgeBaseName:
+    AllowedPattern: ^[a-z][a-z0-9-]{2,25}$
+    Default: bedrock-userguide-demo
+    Description: >-
+      Name of the Knowledge Base to create (also used in naming other resources including
+      OpenSearch collection, IAM roles, etc)
+    Type: String
+  KnowledgeBaseDescription:
+    Type: String
+    Description: Human-readable description of the knowledge base.
+    Default: Example Knowledge Base for searching the Amazon Bedrock User Guide
+  EmbeddingModel:
+    Type: String
+    Description: ID of the Bedrock embedding model to use for indexing content for search
+    Default: amazon.titan-embed-text-v2:0
+    AllowedValues:
+      - amazon.titan-embed-text-v2:0
+  EmbeddingDimension:
+    Type: String
+    Description: Embedding dimension for the embedding model used for indexing content for search
+    Default: 1024
+    AllowedValues:
+      - 256
+      - 384
+      - 512
+      - 1024
+      - 1536
+  
+  S3BucketNamePrefix:
+    Type: String
+    Description: >-
+      First part of S3 bucket name to create for knowledge base storage (will be suffixed with
+      AWS Account ID and Region for uniqueness)
+    Default: bedrock-rag
+  S3BucketDocumentUploadFolderPrefix:
+    Type: String
+    Description: Folder prefix in main S3 bucket under which input document files will be stored
+    Default: kb-docs
+  SourceDataS3Bucket:
+    Type: String
+    Description: Name of an S3 bucket from which initial documents should be imported
+    Default: 'ws-assets-prod-iad-r-pdx-f3b3f9f1a7d6a3d0'
+  SourceDataS3Prefix:
+    Type: String
+    Description: Folder prefix in SourceDataS3Bucket from which documents should be imported
+    Default: '1fa309f2-c771-42d5-87bc-e8f919e7bcc9/bedrock-ug.pdf'
+  
+  ChunkingStrategy:
+    Type: String
+    Description: Selected Chunking strategy
+    Default: Fixed-size chunking
+    AllowedValues:
+      - Default chunking
+      - Fixed-size chunking
+      - No chunking
+  MaxTokens:
+    Type: String
+    Description: Maximum number of tokens in a chunk
+    Default: 1024
+  OverlapPercentage:
+    Type: String
+    Description: Percent overlap in each chunk
+    Default: 50
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Permissions
+        Parameters:
+          - ProvisioningPrincipal
+      - Label:
+          default: Knowledge Base
+        Parameters:
+          - KnowledgeBaseName
+          - KnowledgeBaseDescription
+          - EmbeddingModel
+      - Label:
+          default: Data Source
+        Parameters:
+          - S3BucketNamePrefix
+          - S3BucketDocumentUploadFolderPrefix
+          - SourceDataS3Bucket
+          - SourceDataS3Prefix
+      - Label:
+          default: Chunking
+        Parameters:
+          - ChunkingStrategy
+          - MaxTokens
+          - OverlapPercentage
+
+Conditions:
+  HasInputDocumentUploadFolderPrefix:
+    Fn::Not:
+    - Fn::Equals:
+      - ''
+      - Ref: S3BucketDocumentUploadFolderPrefix
+  IsChunkingStrategyFixed:
+    Fn::Equals:
+      - Ref: ChunkingStrategy
+      - Fixed-size chunking
+  IsChunkingStrategyDefault:
+    Fn::Equals:
+      - Ref: ChunkingStrategy
+      - Default chunking
+  IsChunkingStrategyNoChunking:
+    Fn::Equals:
+      - Ref: ChunkingStrategy
+      - No chunking
+  IsChunkingStrategyFixedOrDefault:
+    Fn::Or:
+      - Condition: IsChunkingStrategyFixed
+      - Condition: IsChunkingStrategyDefault
+
+Resources:
+  DataBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Properties:
+      BucketName: !Sub '${S3BucketNamePrefix}-${AWS::Region}-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  Collection:
+    Type: AWS::OpenSearchServerless::Collection
+    DependsOn:
+      - EncryptionPolicy
+    Properties:
+      Description: !Sub 'Bedrock Knowledge Base ${KnowledgeBaseName}'
+      Name: !Sub 'kb-${KnowledgeBaseName}'
+      Type: VECTORSEARCH
+
+  KnowledgeBaseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'AmazonBedrockKnowledgeBase_${KnowledgeBaseName}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - bedrock.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Sub '${AWS::AccountId}'
+              ArnLike:
+                aws:SourceArn: !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*'
+      Policies:
+        - PolicyName: KnowledgeBasePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: BedrockInvokeModelAccess
+                Effect: Allow
+                Action:
+                  - 'bedrock:InvokeModel'
+                  - 'bedrock:InvokeModelWithResponseStream'
+                Resource:
+                  - '*'  # Allow all models since generation model's not part of up-front config anyway
+              - Sid: OpenSearchServerlessAccess
+                Effect: Allow
+                Action:
+                  - 'aoss:APIAccessAll'
+                  - 'aoss:*'
+                Resource:
+                  - !GetAtt Collection.Arn
+              - Sid: ListDataBucket
+                Effect: Allow
+                Action:
+                  - 's3:ListBucket'
+                Resource:
+                  - !GetAtt DataBucket.Arn
+              - Sid: ReadS3Documents
+                Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                Resource:
+                  - !Sub '${DataBucket.Arn}/${S3BucketDocumentUploadFolderPrefix}*'
+      Tags:
+        - Key: Project
+          Value: HallucinationWorkshop
+
+  EncryptionPolicy:
+    Type: AWS::OpenSearchServerless::SecurityPolicy
+    Properties:
+      Name: !Sub 'kb-sec-${KnowledgeBaseName}'
+      Policy:
+        # (It's also possible to do this syntax on the other policies & skip the Fn::ToJsonString
+        # and the 'AWS::LanguageExtensions' Transform, but they're a bit longer so more unwieldy to
+        # manage)
+        Fn::Sub: '{"Rules": [{"ResourceType": "collection", "Resource": ["collection/kb-${KnowledgeBaseName}"]}],
+          "AWSOwnedKey": true}'
+      Type: encryption
+
+  NetworkPolicy:
+    Type: AWS::OpenSearchServerless::SecurityPolicy
+    DependsOn:
+      - EncryptionPolicy
+    Properties:
+      Name: !Sub 'kb-net-${KnowledgeBaseName}'
+      Policy:
+        Fn::ToJsonString:
+          - AllowFromPublic: true
+            Description: !Sub 'Public access for kb-${KnowledgeBaseName} collection'
+            Rules:
+              - ResourceType: dashboard
+                Resource:
+                  - !Sub 'collection/kb-${KnowledgeBaseName}'
+              - ResourceType: collection
+                Resource:
+                  - !Sub 'collection/kb-${KnowledgeBaseName}'
+      Type: network
+
+  DataAccessPolicy:
+    Type: AWS::OpenSearchServerless::AccessPolicy
+    DependsOn:
+      - NetworkPolicy
+    Properties:
+      Name: !Sub 'kb-access-${KnowledgeBaseName}'
+      Policy:
+        Fn::ToJsonString:
+          - Principal:
+              - !GetAtt KnowledgeBaseRole.Arn
+            Rules:
+              - Permission:
+                  - 'aoss:CreateCollectionItems'
+                  - 'aoss:DeleteCollectionItems'
+                  - 'aoss:DescribeCollectionItems'
+                  - 'aoss:UpdateCollectionItems'
+                Resource:
+                  - !Sub 'collection/kb-${KnowledgeBaseName}'
+                ResourceType: collection
+              - Permission:
+                  - 'aoss:CreateIndex'
+                  - 'aoss:DeleteIndex'
+                  - 'aoss:DescribeIndex'
+                  - 'aoss:ReadDocument'
+                  - 'aoss:UpdateIndex'
+                  - 'aoss:WriteDocument'
+                Resource:
+                  - !Sub 'index/kb-${KnowledgeBaseName}/*'
+                ResourceType: index
+          - Principal:
+              - 'arn:aws:iam::${AWS::AccountId}:${ProvisioningPrincipal}'
+            Rules:
+              - Permission:
+                  - 'aoss:CreateCollectionItems'
+                  - 'aoss:DescribeCollectionItems'
+                  - 'aoss:DeleteCollectionItems'
+                  - 'aoss:UpdateCollectionItems'
+                Resource:
+                  - !Sub 'collection/kb-${KnowledgeBaseName}'
+                ResourceType: collection
+              - Permission:
+                  # (Note provisioning role doesn't need Read/WriteDocument)
+                  - 'aoss:CreateIndex'
+                  - 'aoss:DeleteIndex'
+                  - 'aoss:DescribeIndex'
+                  - 'aoss:UpdateIndex'
+                Resource:
+                  - !Sub 'index/kb-${KnowledgeBaseName}/*'
+                ResourceType: index
+      Type: data
+
+  Index:
+    Type: AWS::OpenSearchServerless::Index
+    DependsOn:
+      - DataAccessPolicy
+      - NetworkPolicy
+      - EncryptionPolicy
+    Properties:
+      CollectionEndpoint: !GetAtt Collection.CollectionEndpoint
+      IndexName: !Sub '${KnowledgeBaseName}-index'
+      Mappings:
+        Properties:
+          vector:
+            Type: knn_vector
+            Dimension: !Ref EmbeddingDimension
+            Method:
+              Name: hnsw
+              Engine: faiss
+              SpaceType: l2
+          text:
+            Type: text
+          text-metadata:
+            Type: text
+      Settings:
+        Index:
+          Knn: true
+          KnnAlgoParamEfSearch: 512
+          # NumberOfShards: 1  # Seems not currently supported in CFn
+          # NumberOfReplicas: 0  # Seems not currently supported in CFn
+          # RefreshInterval: Not specified - e.g. '5s'?
+
+  UnusedResourceToPadTime:
+    Type: AWS::IAM::Role
+    DependsOn:
+      - Index
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - bedrock.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Sub '${AWS::AccountId}'
+  
+  KnowledgeBase:
+    Type: AWS::Bedrock::KnowledgeBase
+    DependsOn:
+      - Index  # Needs to be explicit for some reason, even though !Ref'd
+      - UnusedResourceToPadTime
+    Properties:
+      Description: !Ref KnowledgeBaseDescription
+      KnowledgeBaseConfiguration:
+        Type: VECTOR
+        VectorKnowledgeBaseConfiguration:
+          EmbeddingModelArn: !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/${EmbeddingModel}'
+          # TODO: Specifying this breaks it?
+          EmbeddingModelConfiguration:
+            BedrockEmbeddingModelConfiguration:
+              Dimensions: !Ref EmbeddingDimension
+      Name: !Ref KnowledgeBaseName
+      RoleArn: !GetAtt KnowledgeBaseRole.Arn
+      StorageConfiguration:
+        OpensearchServerlessConfiguration:
+          CollectionArn: !GetAtt Collection.Arn
+          FieldMapping:
+            MetadataField: text-metadata
+            TextField: text
+            VectorField: vector
+          VectorIndexName: !Select [0, !Split ['|', !Ref Index]]
+        Type: OPENSEARCH_SERVERLESS
+
+  KnowledgeBaseDataSource:
+    Type: AWS::Bedrock::DataSource
+    Properties:
+      DataSourceConfiguration:
+        Type: S3
+        S3Configuration:
+          BucketArn: !GetAtt DataBucket.Arn
+          InclusionPrefixes:
+            - !Ref S3BucketDocumentUploadFolderPrefix
+      Description: Primary data source (created by CloudFormation)
+      KnowledgeBaseId: !Ref KnowledgeBase
+      Name: s3-primary
+      VectorIngestionConfiguration:
+        ChunkingConfiguration:
+          Fn::If:
+            - IsChunkingStrategyFixed
+            - ChunkingStrategy: FIXED_SIZE
+              FixedSizeChunkingConfiguration:
+                MaxTokens: !Ref MaxTokens
+                OverlapPercentage: !Ref OverlapPercentage
+            - Fn::If:
+                - IsChunkingStrategyDefault
+                - ChunkingStrategy: FIXED_SIZE
+                  FixedSizeChunkingConfiguration:
+                    MaxTokens: 1024
+                    OverlapPercentage: 50
+                - Fn::If:
+                    - IsChunkingStrategyNoChunking
+                    - ChunkingStrategy: NONE
+                    - !Ref AWS::NoValue
+
+  KBSetupLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: BedrockKBSyncManagement
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: BedrockIngestionJobPerms
+                Effect: Allow
+                Action:
+                  - 'bedrock:GetIngestionJob'
+                  - 'bedrock:StartIngestionJob'
+                  - 'bedrock:StopIngestionJob'
+                Resource:
+                  - !GetAtt KnowledgeBase.KnowledgeBaseArn
+              - Sid: S3Read
+                Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:GetObjectAcl'
+                  - 's3:GetObjectAttributes'
+                  - 's3:GetObjectLegalHold'
+                  - 's3:GetObjectRetention'
+                  - 's3:GetObjectTagging'
+                  - 's3:GetObjectTorrent'
+                  - 's3:GetObjectVersion'
+                  - 's3:GetObjectVersionAcl'
+                  - 's3:GetObjectVersionAttributes'
+                  - 's3:GetObjectVersionForReplication'
+                  - 's3:GetObjectVersionTagging'
+                  - 's3:GetObjectVersionTorrent'
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:s3:::${SourceDataS3Bucket}/${SourceDataS3Prefix}*'
+                  - !Sub '${DataBucket.Arn}/${S3BucketDocumentUploadFolderPrefix}*'
+              - Sid: S3Write
+                Effect: Allow
+                Action:
+                  - 's3:AbortMultipartUpload'
+                  # - 's3:DeleteObject' - Not currently enabled, sync adds/updates only
+                  # - 's3:DeleteObjectVersion'
+                  - 's3:ListMultipartUploadParts'
+                  - 's3:PutObject'
+                  - 's3:PutObjectAcl'
+                  - 's3:PutObjectTagging'
+                  - 's3:PutObjectVersionAcl'
+                  - 's3:PutObjectVersionTagging'
+                Resource:
+                  - !Sub '${DataBucket.Arn}/${S3BucketDocumentUploadFolderPrefix}*'
+              - Sid: S3BucketPerms
+                Effect: Allow
+                Action:
+                  - 's3:GetBucketLocation'
+                  - 's3:GetBucketVersioning'
+                  - 's3:ListBucket'
+                  - 's3:ListBucketVersions'
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:s3:::${SourceDataS3Bucket}'
+                  - !GetAtt DataBucket.Arn
+              - Sid: S3WriteBucketPerms
+                Effect: Allow
+                Action:
+                  - 's3:ListBucketMultipartUploads'
+                Resource:
+                  - !GetAtt DataBucket.Arn
+
+  KBSyncFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        ZipFile: |
+          import logging
+          import os
+          import subprocess
+          import time
+
+          logging.getLogger().setLevel(logging.INFO)  # Set log level for AWS Lambda *BEFORE* other imports
+
+          import boto3
+          from botocore.exceptions import ClientError
+          import cfnresponse
+
+          bedrock_agent_client = boto3.client("bedrock-agent")
+          s3 = boto3.resource("s3")
+          s3client = boto3.client("s3")
+          logger = logging.getLogger("main")
+
+          DEFAULT_KNOWLEDGE_BASE_ID = os.environ.get("DEFAULT_KNOWLEDGE_BASE_ID")
+          DEFAULT_DATA_SOURCE_ID = os.environ.get("DEFAULT_DATA_SOURCE_ID")
+
+          class IngestionJobFailed(ValueError):
+              pass
+
+          class IngestionJobUnexpectedStatus(ValueError):
+              pass
+
+          def lambda_handler(event, context):  
+              try:
+                  logger.info(event)
+                  request_type = event.get("RequestType")
+                  if request_type in ("Create", "Update"):
+                      handle_upsert(event, context)
+                  elif request_type == "Delete":
+                      logger.info("CloudFormation Delete event is a no-op for this resource")
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {},'')
+                  else:
+                      cfnresponse.send(
+                          event,
+                          context,
+                          cfnresponse.FAILED,
+                          { "Reason": f"Unsupported CFN RequestType '{request_type}'" },
+                      )
+              except Exception as e:
+                  logging.exception("Uncaught exception in CFN custom resource handler - reporting failure")
+                  cfnresponse.send(
+                      event,
+                      context,
+                      cfnresponse.FAILED,
+                      {},
+                      reason=f"See CloudWatch {context.log_group_name} > {context.log_stream_name} - {str(e)}",
+                  )
+                  time.sleep(5)  # Hopefully promote flush of CFn event
+                  raise e
+              
+          def sync_content(
+              source_bucket: str,
+              target_bucket: str,
+              source_prefix: str = "",
+              target_prefix: str = "",
+              wait_timeout_secs: float = 12 * 60,
+          ):
+              tstart = time.time()
+              input_uri = f"s3://{source_bucket}/{source_prefix}"
+              output_uri = f"s3://{target_bucket}/{target_prefix}"
+              logger.info("Syncing content %s -> %s", input_uri, output_uri)
+              listed_any_items = False
+              try:
+                  for obj in s3.Bucket(source_bucket).objects.filter(Prefix=source_prefix):
+                      listed_any_items = True
+                      if time.time() - tstart > wait_timeout_secs:
+                          raise TimeoutError(
+                              f"Timed out syncing content after {wait_timeout_secs}s"
+                          )
+                      if obj.key.endswith("/"):
+                          continue
+                      target_key = obj.key if not target_prefix else obj.key.replace(source_prefix, target_prefix)
+                      logger.debug("Copying %s -> %s", obj.key, target_key)
+                      s3client.copy(
+                          {
+                              "Bucket": source_bucket,
+                              "Key": obj.key,
+                          },
+                          target_bucket,
+                          target_key,
+                      )
+                      logger.info("Finished syncing content %s -> %s", input_uri, output_uri)
+              except ClientError as e:
+                  if (
+                      listed_any_items
+                      or not source_prefix
+                      or not e.response
+                      or e.response.get("Error", {}).get("Code") != "AccessDenied"
+                  ):
+                      raise e
+                  logger.warning("AccessDenied for initial list of %s - trying single-object copy", input_uri)
+                  # If we get AccessDenied for the initial list, it may be that the input path is a single object
+                  # .copy errors with AccessDenied on HeadObject
+                  # obj_resp = s3client.get_object(Bucket=source_bucket, Key=source_prefix)
+                  # s3client.put_object(Bucket=target_bucket, Key=target_prefix, Body=obj_resp["Body"].read())
+                  s3client.copy_object(
+                      CopySource={
+                          "Bucket": source_bucket,
+                          "Key": source_prefix,
+                      },
+                      Bucket=target_bucket,
+                      Key=target_prefix,
+                  )
+                  logger.info("Copied single file %s -> %s", input_uri, output_uri)
+
+          def run_bedrock_ingestion_job(
+              knowledge_base_id: str,
+              data_source_id: str,
+              description: str | None = None,
+              client_token: str | None = None,
+              wait: bool = False,
+              wait_poll_secs: float = 60,
+              wait_timeout_secs: float = 12 * 60,
+          ):
+              # Set up the job parameters:
+              job_params = {
+                  "knowledgeBaseId": knowledge_base_id,
+                  "dataSourceId": data_source_id,
+              }
+              if client_token:
+                  job_params["clientToken"] = client_token
+              if description:
+                  job_params["description"] = description
+              logger.debug("Starting ingestion job with parameters: %s", job_params)
+              start_sync_resp = bedrock_agent_client.start_ingestion_job(**job_params)
+              sync_job_id = start_sync_resp["ingestionJob"]["ingestionJobId"]
+              logger.info(
+                  "Started ingestion job %s for KB %s, data source %s",
+                  sync_job_id,
+                  knowledge_base_id,
+                  data_source_id,
+              )
+
+              if wait:
+                  logger.info(
+                      "Waiting for job %s to complete for up to %s seconds", sync_job_id, wait_timeout_secs
+                  )
+                  job_status = start_sync_resp["ingestionJob"].get("status", "STARTING")
+                  tstart = time.time()
+                  while job_status in ("STARTING", "IN_PROGRESS", "STOPPING"):
+                      timeout_secs_remaining = wait_timeout_secs - (time.time() - tstart)
+                      if timeout_secs_remaining <= 0:
+                          raise TimeoutError(
+                              f"Timed out after {wait_timeout_secs}s waiting for job {sync_job_id} to complete"
+                          )
+                      wait_secs = min(wait_poll_secs, timeout_secs_remaining)
+                      time.sleep(wait_secs)
+                      job_status = bedrock_agent_client.get_ingestion_job(
+                          knowledgeBaseId=knowledge_base_id,
+                          dataSourceId=data_source_id,
+                          ingestionJobId=sync_job_id,
+                      )["ingestionJob"]["status"]
+                  if job_status == "COMPLETE":
+                      logger.info(
+                          "Sync job %s completed successfully for KB %s, data source %s",
+                          sync_job_id,
+                          knowledge_base_id,
+                          data_source_id,
+                      )
+                      return sync_job_id
+                  elif job_status == "FAILED":
+                      raise IngestionJobFailed(
+                          "Sync job %s FAILED for KB %s, data source %s" % (
+                              sync_job_id, knowledge_base_id, data_source_id,
+                          )
+                      )
+                  else:
+                      raise IngestionJobUnexpectedStatus(
+                          "Sync job %s entered unexpected status %s for KB %s, data source %s" % (
+                              sync_job_id, job_status, knowledge_base_id, data_source_id,
+                          )
+                      )
+
+          def handle_upsert(event, context):
+              tstart = time.time()
+              logger.info("Received Create/Update event")
+              res_props = event["ResourceProperties"]
+
+              # Validate Knowledge Base props:
+              knowledge_base_id = res_props.get("KnowledgeBaseId", DEFAULT_KNOWLEDGE_BASE_ID)
+              if not knowledge_base_id:
+                  raise ValueError(
+                      "Must set KnowledgeBaseId CFn prop or DEFAULT_KNOWLEDGE_BASE_ID Lambda env var"
+                  )
+              data_source_id = res_props.get("DataSourceId", DEFAULT_DATA_SOURCE_ID)
+              if not data_source_id:
+                  raise ValueError(
+                      "Must set DataSourceId CFn prop or DEFAULT_DATA_SOURCE_ID Lambda env var"
+                  )
+              wait_for_ingestion = res_props.get("WaitForIngestion", False)
+              # Validate S3 data props:
+              source_bucket_name = res_props.get("SourceBucketName")
+              source_bucket_prefix = res_props.get("SourceBucketPrefix", "")
+              target_bucket_name = res_props.get("TargetBucketName")
+              target_bucket_prefix = res_props.get("TargetBucketPrefix", "")
+              if bool(source_bucket_name) != bool(target_bucket_name):
+                  raise ValueError(
+                      "Must set both SourceBucketName and TargetBucketName (to enable content import), or "
+                      "neither (to disable it)"
+                  )
+              
+              if source_bucket_name:
+                  # Sync content from source to target:
+                  sync_content(
+                      source_bucket=source_bucket_name,
+                      source_prefix=source_bucket_prefix,
+                      target_bucket=target_bucket_name,
+                      target_prefix=target_bucket_prefix,
+                      # Avoid going over Lambda 15min timeout:
+                      wait_timeout_secs=14.9 * 60 - (time.time() - tstart),
+                  )
+                  synced_from = f"s3://{source_bucket_name}/{source_bucket_prefix}"
+              else:
+                  synced_from = None
+
+              # Run ingestion job:
+              ingestion_job_id = run_bedrock_ingestion_job(
+                  knowledge_base_id=knowledge_base_id,
+                  data_source_id=data_source_id,
+                  # TODO: clientToken for idempotency?
+                  description=f"Sync started by CloudFormation CR Lambda {context.function_name}",
+                  wait=wait_for_ingestion,
+                  # Avoid going over Lambda 15min timeout:
+                  wait_timeout_secs=14.9 * 60 - (time.time() - tstart),
+              )
+
+              # Report success
+              cfnresponse.send(
+                  event,
+                  context,
+                  cfnresponse.SUCCESS,
+                  {"IngestionJobId": ingestion_job_id, "SyncedDataFrom": synced_from},
+                  physicalResourceId=f"{knowledge_base_id}|{data_source_id}",
+              )
+
+      Description: >-
+        CloudFormation Custom Resource Lambda to trigger sync/ingestion on a Bedrock Knowledge Base
+      Handler: index.lambda_handler
+      MemorySize: 512
+      Role: !GetAtt KBSetupLambdaRole.Arn
+      Runtime: python3.11
+      Timeout: 900
+
+  InitialKBSync:
+    Type: Custom::RunBedrockKnowledgeBaseSync
+    Properties:
+      ServiceToken: !GetAtt KBSyncFunction.Arn
+      # Knowledge Base params:
+      KnowledgeBaseId: !Ref KnowledgeBase
+      DataSourceId: !Select [1, !Split ['|', !Ref KnowledgeBaseDataSource]]
+      WaitForIngestion: true
+      # Data copy params:
+      SourceBucketName: !Ref SourceDataS3Bucket
+      SourceBucketPrefix: !Ref SourceDataS3Prefix
+      TargetBucketName: !Ref DataBucket
+      # In this case we're doing a single-item copy so should also give dest filename:
+      TargetBucketPrefix: !Sub '${S3BucketDocumentUploadFolderPrefix}/bedrock-ug.pdf'
+
+Outputs:
+  KnowledgeBaseArn:
+    Description: ARN of the created Amazon Bedrock Knowledge Base
+    Value: !GetAtt KnowledgeBase.KnowledgeBaseArn
+  KnowledgeBaseId:
+    Description: Unique ID of the created Amazon Bedrock Knowledge Base
+    Value: !Ref KnowledgeBase
