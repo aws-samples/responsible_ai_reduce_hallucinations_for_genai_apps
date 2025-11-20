@@ -17,7 +17,7 @@ The examples are generally presented via interactive Python notebooks, and the r
 ├── .env                   # Your credentials (git-ignored, and sensitive!)
 ├── hallucination_utils/   # Utility code to help simplify the notebooks
 │   ├── bedrock_guardrails/  # Strands + Amazon Bedrock Guardrails integration
-│   ├── models/              # Custom Strands model wrappers
+│   ├── strands_models/      # Custom Strands model wrappers
 │   │   └── parallel.py      # Run multiple parallel models and combine results
 │   │   └── with_checks.py   # Integrate custom, model-level output checks
 │   ├── types/               # Type definitions to help clarify interfaces
