@@ -1,6 +1,6 @@
-# Detecting and reducing hallucinations in generative AI applications
+# Detecting and reducing AI hallucinations in generative AI applications
 
-This repository demonstrates a range of methods for detecting and intervening to avoid "hallucinations" in LLM-powered applications, including AI Agents with [Strands](https://strandsagents.com/latest/).
+This repository demonstrates a range of methods for detecting and intervening to avoid "AI hallucinations" in LLM-powered applications, including AI Agents with [Strands](https://strandsagents.com/latest/).
 
 The main flow accompanies the **[guided workshop instructions HERE](https://catalog.workshops.aws/workshops/1fa309f2-c771-42d5-87bc-e8f919e7bcc9/en-US)** - where you can find more information about prerequisites and environment setup, the concepts discussed, and a step-by-step walkthrough of the labs.
 
@@ -38,12 +38,12 @@ The main suggested flow of exploration is:
 - **Lab 0: SageMaker Model Deployment** ([lab0-deploy-sagemaker-ai-endpoint.ipynb](lab0-deploy-sagemaker-ai-endpoint.ipynb))
     - Deploy a self-hosted LLM on Amazon SageMaker AI, for use in later examples
 - **Lab 1: Contextual Grounding** ([lab1-contextual-grounding.ipynb](lab1-contextual-grounding.ipynb))
-    - Explore how RAG and similar contextual grounding patterns help reduce hallucinations in agents; their limitations; and how [Amazon Bedrock Guardrails](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-contextual-grounding-check.html) can add further protection with fully-managed API.
+    - Explore how RAG and similar contextual grounding patterns help reduce AI hallucinations in agents; their limitations; and how [Amazon Bedrock Guardrails](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-contextual-grounding-check.html) can add further protection with fully-managed API.
 - **Lab 2: Response-Level Detection** ([lab2-response-level-detection.ipynb](lab2-response-level-detection.ipynb))
-    - Use three hallucination detection methods that *only* depend on the LLM output (no reference data or internal model activations): *Semantic Similarity Analysis*, *Non-Contradiction Probability*, and *Normalized Semantic Negentropy*.
+    - Use three AI hallucination detection methods that *only* depend on the LLM output (no reference data or internal model activations): *Semantic Similarity Analysis*, *Non-Contradiction Probability*, and *Normalized Semantic Negentropy*.
     - 🛑 Note: You'll need to complete lab 0 first, before lab 2
 - **Lab 3: Token Probability-Level Detection** ([lab3-token-probability-level-detection.ipynb](lab3-token-probability-level-detection.ipynb))
-    - Try more advanced hallucination detection methods that depend on visibility of the per-token 'logprobs' output scores (which are not exposed by some proprietary model providers, but can be more efficient than response-level detection where available)
+    - Try more advanced AI hallucination detection methods that depend on visibility of the per-token 'logprobs' output scores (which are not exposed by some proprietary model providers, but can be more efficient than response-level detection where available)
     - 🛑 Note: You'll need to complete lab 0 first, before lab 3
 
 If you have extra time, you could also explore the **other-examples/**:
@@ -52,7 +52,7 @@ If you have extra time, you could also explore the **other-examples/**:
     - Deploy a private RAG pipeline with [Amazon Bedrock Knowledge Bases](https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base.html), and add extra protections with [Amazon Bedrock Guardrails](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-contextual-grounding-check.html)
     - In contrast to main lab 1, this example 1/ uses a private knowledge base instead of the public AWS Knowledge MCP, and 2/ focuses on the core APIs instead of integrating with Strands Agents SDK
 - [bedrock-agent-self-reflection](other-examples/bedrock-agent-self-reflection/)
-    - Demonstrate a more specialized pattern as discussed in [this AWS ML Blog post](https://aws.amazon.com/blogs/machine-learning/reducing-hallucinations-in-large-language-models-with-custom-intervention-using-amazon-bedrock-agents/): where the model itself decides when to run the hallucination check.
+    - Demonstrate a more specialized pattern as discussed in [this AWS ML Blog post](https://aws.amazon.com/blogs/machine-learning/reducing-hallucinations-in-large-language-models-with-custom-intervention-using-amazon-bedrock-agents/): where the model itself decides when to run the AI hallucination check.
     - In contrast to the main labs, this example uses [Amazon Bedrock Agents](https://docs.aws.amazon.com/bedrock/latest/userguide/agents-how.html) instead of the Open Source Strands Agents SDK.
 
 
