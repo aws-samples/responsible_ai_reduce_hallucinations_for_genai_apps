@@ -41,8 +41,8 @@ def set_up_notebook_langfuse(
     )
     load_dotenv(dotenv_filepath)
 
-    LANGFUSE_PUBLIC_KEY = os.environ.get("LANGFUSE_PUBLIC_KEY")
     LANGFUSE_SECRET_KEY = os.environ.get("LANGFUSE_SECRET_KEY")
+    LANGFUSE_PUBLIC_KEY = os.environ.get("LANGFUSE_PUBLIC_KEY")
     LANGFUSE_HOST = os.environ.get("LANGFUSE_HOST", "cloud.langfuse.com")
 
     if refresh or not (LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY):
@@ -59,14 +59,15 @@ def set_up_notebook_langfuse(
                 )
             )
         )
-        LANGFUSE_PUBLIC_KEY = getpass(prompt="LANGFUSE_PUBLIC_KEY:")
         LANGFUSE_SECRET_KEY = getpass(prompt="LANGFUSE_SECRET_KEY:")
+        LANGFUSE_PUBLIC_KEY = getpass(prompt="LANGFUSE_PUBLIC_KEY:")
         LANGFUSE_HOST = input("LANGFUSE_HOST_URL:")
         LANGFUSE_HOST = LANGFUSE_HOST or "https://cloud.langfuse.com"
 
         os.environ["LANGFUSE_HOST"] = LANGFUSE_HOST
-        os.environ["LANGFUSE_PUBLIC_KEY"] = LANGFUSE_PUBLIC_KEY
         os.environ["LANGFUSE_SECRET_KEY"] = LANGFUSE_SECRET_KEY
+        os.environ["LANGFUSE_PUBLIC_KEY"] = LANGFUSE_PUBLIC_KEY
+        
         if LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY and LANGFUSE_HOST:
             with open(dotenv_filepath, "a") as env_file:
                 env_file.writelines(
