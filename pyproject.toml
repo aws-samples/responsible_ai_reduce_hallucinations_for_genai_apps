@@ -22,7 +22,7 @@ dependencies = [
     "sentence-transformers>=5.1.0",
     "strands-agents-tools>=0.2.8",
     "strands-agents[otel,sagemaker]>=1.10",
-    "transformers>=4.56.1",
+    "transformers[torch]>=4.56.1",
 ]
 
 [dependency-groups]
